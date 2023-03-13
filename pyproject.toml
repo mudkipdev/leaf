@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "leaf-bot"
+version = "0.0.0"
+description = "An advanced Discord bot written in Python."
+authors = ["mudkipdev <mudkip@mudkip.dev>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "leaf_bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+discord-py = "^2.2.2"
+jishaku = "^2.5.1"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
