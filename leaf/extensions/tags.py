@@ -3,6 +3,7 @@ from utils import Paginator
 from discord.ext import commands
 from discord import app_commands
 import discord
+import asyncio
 import pytz
 
 from typing import Optional
@@ -119,7 +120,17 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     and message.author == interaction.user
                 )
 
-            message = await self.bot.wait_for("message", timeout=300, check=check)
+            try:
+                message = await self.bot.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError:
+                await interaction.channel.send(
+                    interaction.user.mention,
+                    embed=discord.Embed(
+                        description="You took too long to provide the tag content.",
+                        color=discord.Color.dark_embed(),
+                    ),
+                )
+                return
 
             await self.bot.database.execute(
                 """
@@ -184,7 +195,18 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     and message.author == interaction.user
                 )
 
-            message = await self.bot.wait_for("message", timeout=300, check=check)
+            try:
+                message = await self.bot.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError:
+                await interaction.channel.send(
+                    interaction.user.mention,
+                    embed=discord.Embed(
+                        description="You took too long to provide the new tag content.",
+                        color=discord.Color.dark_embed(),
+                    ),
+                )
+                return
+
             await self.bot.database.execute(
                 "UPDATE tags SET content = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
                 message.content,
