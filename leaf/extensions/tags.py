@@ -3,6 +3,7 @@ from utils import Paginator
 from discord.ext import commands
 from discord import app_commands
 import discord
+import pytz
 
 from typing import Optional
 
@@ -267,14 +268,20 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 title=f"Info for tag \"{tag_record['name']}\"",
                 color=discord.Color.dark_embed(),
             )
+            embed.add_field(name="Owner", value=str(owner))
             embed.add_field(
                 name="Created At",
-                value=discord.utils.format_dt(tag_record["created_at"], "D"),
+                value=discord.utils.format_dt(
+                    pytz.UTC.localize(tag_record["created_at"], "D")
+                ),
+                inline=False,
             )
             if tag_record["last_edited_at"] != tag_record["created_at"]:
                 embed.add_field(
                     name="Updated At",
-                    value=discord.utils.format_dt(tag_record["last_edited_at"], "D"),
+                    value=discord.utils.format_dt(
+                        pytz.UTC.localize(tag_record["last_edited_at"], "D")
+                    ),
                     inline=False,
                 )
             embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
@@ -288,6 +295,55 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     color=discord.Color.dark_embed(),
                 ),
                 ephemeral=silent,
+            )
+
+    @app_commands.describe(
+        tag="The tag to transfer to the new user.",
+        user="The user to transfer the tag to.",
+    )
+    @app_commands.command(
+        name="transfer", description="Transfers a tag to a different owner."
+    )
+    async def transfer(
+        self, interaction: discord.Interaction, tag: str, user: discord.Member
+    ) -> None:
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag,
+            interaction.guild.id,
+        )
+
+        if tag_record:
+            if (
+                tag_record["owner_id"] == interaction.user.id
+                or interaction.user.guild_permissions.manage_guild
+            ):
+                await self.bot.database.execute(
+                    "UPDATE tags SET owner_id = $1 WHERE name = $2 AND guild_id = $3",
+                    user.id,
+                    tag,
+                    interaction.guild.id,
+                )
+                await interaction.response.send_message(
+                    user.mention,
+                    embed=discord.Embed(
+                        description=f"The tag has successfully been transferred to {user.mention}.",
+                        color=discord.Color.dark_embed(),
+                    ),
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You do not have permission to edit that tag.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+        else:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="That tag does not exist.",
+                    color=discord.Color.dark_embed(),
+                )
             )
 
 
