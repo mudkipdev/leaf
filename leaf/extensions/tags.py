@@ -14,7 +14,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
         self.bot = bot
 
-    @app_commands.describe(starting_page="The page to start on.", silent = "Whether the response should only be visible to you.")
+    @app_commands.describe(
+        starting_page="The page to start on.",
+        silent="Whether the response should only be visible to you.",
+    )
     @app_commands.command(name="list", description="Lists all the tags in the server.")
     async def list_tags(
         self,
@@ -61,7 +64,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         paginator = Paginator(embeds=embeds, index=starting_page - 1)
         await paginator.start(interaction, ephemeral=silent)
 
-    @app_commands.describe(tag="The name of the tag to view.", silent = "Whether the response should only be visible to you.")
+    @app_commands.describe(
+        tag="The name of the tag to view.",
+        silent="Whether the response should only be visible to you.",
+    )
     @app_commands.command(name="view", description="Sends the content of a tag.")
     async def view_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -158,9 +164,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(tag="The name of the tag to edit.")
     @app_commands.command(name="edit", description="Edits the content of a tag.")
-    async def edit_tag(
-        self, interaction: discord.Interaction, tag: str
-    ) -> None:
+    async def edit_tag(self, interaction: discord.Interaction, tag: str) -> None:
         tag_record = await self.bot.database.fetchrow(
             "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
             tag,
@@ -227,7 +231,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
             )
 
-    @app_commands.describe(tag="The name of the tag to delete.", silent = "Whether the response should only be visible to you.")
+    @app_commands.describe(
+        tag="The name of the tag to delete.",
+        silent="Whether the response should only be visible to you.",
+    )
     @app_commands.command(name="delete", description="Deletes a tag from the server.")
     async def delete_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -271,7 +278,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 ephemeral=silent,
             )
 
-    @app_commands.describe(tag="The tag to view info for.", silent = "Whether the response should only be visible to you.")
+    @app_commands.describe(
+        tag="The tag to view info for.",
+        silent="Whether the response should only be visible to you.",
+    )
     @app_commands.command(name="info", description="Sends the info and stats of a tag.")
     async def tag_info(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -320,7 +330,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.describe(
         tag="The tag to transfer to the new user.",
         user="The user to transfer the tag to.",
-        silent = "Whether the response should only be visible to you."
+        silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(
         name="transfer", description="Transfers a tag to a different owner."
@@ -341,13 +351,13 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             ):
                 if user.bot:
                     await interaction.response.send_message(
-                        embed = discord.Embed(
-                            description = "You cannot transfer tags to bots.",
-                            color = discord.Color.dark_embed()
+                        embed=discord.Embed(
+                            description="You cannot transfer tags to bots.",
+                            color=discord.Color.dark_embed(),
                         )
                     )
                     return
-                
+
                 await self.bot.database.execute(
                     "UPDATE tags SET owner_id = $1 WHERE name = $2 AND guild_id = $3",
                     user.id,
