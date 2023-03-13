@@ -329,8 +329,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(
         tag="The tag to transfer to the new user.",
-        user="The user to transfer the tag to.",
-        silent="Whether the response should only be visible to you.",
+        user="The user to transfer the tag to."
     )
     @app_commands.command(
         name="transfer", description="Transfers a tag to a different owner."
