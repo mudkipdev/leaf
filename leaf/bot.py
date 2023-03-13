@@ -13,3 +13,7 @@ class LeafBot(commands.Bot):
             case_insenstiive=True,
             allowed_mentions=discord.AllowedMentions(everyone=False),
         )
+
+    async def setup_hook(self) -> None:
+        for extension in self.config["extensions"]:
+            await self.load_extension(extension)
