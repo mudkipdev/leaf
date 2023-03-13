@@ -159,7 +159,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.describe(tag="The name of the tag to edit.")
     @app_commands.command(name="edit", description="Edits the content of a tag.")
     async def edit_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self, interaction: discord.Interaction, tag: str
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
             "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
