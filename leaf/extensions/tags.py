@@ -50,7 +50,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That page does not exist.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=True,
             )
@@ -75,7 +75,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     title=tag_record["name"],
                     description=tag_record["content"],
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -89,7 +89,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -107,7 +107,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="Please reply to this message with your tag content within 5 minutes.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 )
             )
             message = await interaction.original_response()
@@ -133,14 +133,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await message.reply(
                 embed=discord.Embed(
                     description="Your tag has successfully been created.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 )
             )
         else:
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That tag already exists.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 )
             )
 
@@ -159,7 +159,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -172,7 +172,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="Please reply to this message with your new tag content within 5 minutes.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 )
             )
             message = await interaction.original_response()
@@ -194,14 +194,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await message.reply(
                 embed=discord.Embed(
                     description="Your tag has successfully been edited.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 )
             )
         else:
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="You do not have permission to edit that tag.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -221,7 +221,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -237,7 +237,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="The tag has successfully been deleted.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -245,7 +245,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="You do not have permission to delete that tag.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
@@ -265,7 +265,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             owner = await self.bot.try_user(tag_record["owner_id"])
             embed = discord.Embed(
                 title=f"Info for tag \"{tag_record['name']}\"",
-                color=discord.Color.dark_embed(),
+                color=discord.Color.dark_embed()
             )
             embed.add_field(
                 name="Created At",
@@ -285,7 +285,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
+                    color=discord.Color.dark_embed()
                 ),
                 ephemeral=silent,
             )
