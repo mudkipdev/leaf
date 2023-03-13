@@ -325,7 +325,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(
         name="transfer", description="Transfers a tag to a different owner."
     )
-    async def transfer(
+    async def transfer_tag(
         self, interaction: discord.Interaction, tag: str, user: discord.Member
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
@@ -339,6 +339,15 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag_record["owner_id"] == interaction.user.id
                 or interaction.user.guild_permissions.manage_guild
             ):
+                if user.bot:
+                    await interaction.response.send_message(
+                        embed = discord.Embed(
+                            description = "You cannot transfer tags to bots.",
+                            color = discord.Color.dark_embed()
+                        )
+                    )
+                    return
+                
                 await self.bot.database.execute(
                     "UPDATE tags SET owner_id = $1 WHERE name = $2 AND guild_id = $3",
                     user.id,
