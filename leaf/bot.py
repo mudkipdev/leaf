@@ -4,6 +4,9 @@ from discord.ext import commands
 import discord
 import asyncpg
 
+intents = discord.Intents.default()
+intents.message_content = True
+
 
 class LeafBot(commands.Bot):
     def __init__(self, config: dict) -> None:
@@ -11,7 +14,7 @@ class LeafBot(commands.Bot):
         self.database = None
 
         super().__init__(
-            intents=discord.Intents.default(),
+            intents=intents,
             command_prefix=commands.when_mentioned,
             case_insenstiive=True,
             allowed_mentions=discord.AllowedMentions(everyone=False),
