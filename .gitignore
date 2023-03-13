@@ -1,3 +1,6 @@
+# Leaf - This file could contain private information.
+config.toml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
