@@ -172,8 +172,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description="That tag does not exist.",
                     color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
+                )
             )
             return
 
@@ -225,8 +224,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description="You do not have permission to edit that tag.",
                     color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
+                )
             )
 
     @app_commands.describe(tag="The name of the tag to delete.")
