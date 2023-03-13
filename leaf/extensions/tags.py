@@ -14,7 +14,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
         self.bot = bot
 
-    @app_commands.describe(starting_page="The page to start on.")
+    @app_commands.describe(starting_page="The page to start on.", silent = "Whether the response should only be visible to you.")
     @app_commands.command(name="list", description="Lists all the tags in the server.")
     async def list_tags(
         self,
@@ -54,14 +54,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     description="That page does not exist.",
                     color=discord.Color.dark_embed(),
                 ),
-                ephemeral=True,
+                ephemeral=silent,
             )
             return
 
         paginator = Paginator(embeds=embeds, index=starting_page - 1)
         await paginator.start(interaction, ephemeral=silent)
 
-    @app_commands.describe(tag="The name of the tag to view.")
+    @app_commands.describe(tag="The name of the tag to view.", silent = "Whether the response should only be visible to you.")
     @app_commands.command(name="view", description="Sends the content of a tag.")
     async def view_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -227,7 +227,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
             )
 
-    @app_commands.describe(tag="The name of the tag to delete.")
+    @app_commands.describe(tag="The name of the tag to delete.", silent = "Whether the response should only be visible to you.")
     @app_commands.command(name="delete", description="Deletes a tag from the server.")
     async def delete_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -271,7 +271,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 ephemeral=silent,
             )
 
-    @app_commands.describe(tag="The tag to view info for.")
+    @app_commands.describe(tag="The tag to view info for.", silent = "Whether the response should only be visible to you.")
     @app_commands.command(name="info", description="Sends the info and stats of a tag.")
     async def tag_info(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
@@ -320,6 +320,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.describe(
         tag="The tag to transfer to the new user.",
         user="The user to transfer the tag to.",
+        silent = "Whether the response should only be visible to you."
     )
     @app_commands.command(
         name="transfer", description="Transfers a tag to a different owner."
