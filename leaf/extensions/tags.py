@@ -32,7 +32,6 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         embeds = []
 
         if not tags:
-            # TODO: Remove pagination buttons if there are no tags in the server.
             embeds.append(
                 discord.Embed(
                     description="There are no tags in this server.",
@@ -60,9 +59,12 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 ephemeral=silent,
             )
             return
-
-        paginator = Paginator(embeds=embeds, index=starting_page - 1)
-        await paginator.start(interaction, ephemeral=silent)
+        
+        if tags:
+            paginator = Paginator(embeds=embeds, index=starting_page - 1)
+            await paginator.start(interaction, ephemeral=silent)
+        else:
+            await interaction.response.send_message(embed = embeds[0])
 
     @app_commands.describe(
         tag="The name of the tag to view.",
