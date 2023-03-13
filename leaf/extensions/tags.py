@@ -288,7 +288,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 title=f"Info for tag \"{tag_record['name']}\"",
                 color=discord.Color.dark_embed(),
             )
-            embed.add_field(name="Owner", value=str(owner))
+            embed.add_field(name="Owner", value=owner.mention)
             embed.add_field(
                 name="Created At",
                 value=discord.utils.format_dt(
