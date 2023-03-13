@@ -19,7 +19,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         interaction: discord.Interaction,
         starting_page: Optional[int] = 1,
         silent: Optional[bool] = False,
-    ):
+    ) -> None:
         tags = await self.bot.database.fetch(
             "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
             interaction.guild.id,
@@ -79,6 +79,12 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 ),
                 ephemeral=silent,
             )
+            await self.bot.database.execute(
+                "UPDATE tags SET uses = $1 WHERE name = $2 and guild_id = $3;",
+                tag_record["uses"] + 1,
+                tag,
+                interaction.guild.id,
+            )
         else:
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -90,9 +96,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(name="The tag of the newly created tag.")
     @app_commands.command(name="create", description="Creates a new tag.")
-    async def create_tag(self, interaction: discord.Interaction, name: str):
+    async def create_tag(self, interaction: discord.Interaction, name: str) -> None:
         tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM tags WHERE name = $1 AND guild_id = $2",
+            "SELECT * FROM tags WHERE name = $1 AND guild_id = $2;",
             name,
             interaction.guild.id,
         )
@@ -142,9 +148,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(name="edit", description="Edits the content of a tag.")
     async def edit_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
-    ):
+    ) -> None:
         tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2;",
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
             tag,
             interaction.guild.id,
         )
@@ -179,7 +185,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
             message = await self.bot.wait_for("message", timeout=300, check=check)
             await self.bot.database.execute(
-                "UPDATE tags SET content = $1 WHERE name = $2 and guild_id = $3;",
+                "UPDATE tags SET content = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
                 message.content,
                 tag,
                 interaction.guild.id,
@@ -206,7 +212,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2;",
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
             tag,
             interaction.guild.id,
         )
@@ -239,6 +245,46 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="You do not have permission to delete that tag.",
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=silent,
+            )
+
+    @app_commands.describe(tag="The tag to view info for.")
+    @app_commands.command(name="info", description = "Sends the info and stats of a tag.")
+    async def tag_info(
+        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+    ) -> None:
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag,
+            interaction.guild.id,
+        )
+
+        if tag_record:
+            owner = await self.bot.try_user(tag_record["owner_id"])
+            embed = discord.Embed(
+                title=f"Info for tag \"{tag_record['name']}\"",
+                color=discord.Color.dark_embed(),
+            )
+            embed.add_field(
+                name="Created At",
+                value=discord.utils.format_dt(tag_record["created_at"], "D"),
+            )
+            if tag_record["last_edited_at"] != tag_record["created_at"]:
+                embed.add_field(
+                    name="Updated At",
+                    value=discord.utils.format_dt(tag_record["last_edited_at"], "D"),
+                    inline = False
+                )
+            embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
+            embed.set_thumbnail(url=owner.avatar.url)
+
+            await interaction.response.send_message(embed=embed, ephemeral=silent)
+        else:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="That tag does not exist.",
                     color=discord.Color.dark_embed(),
                 ),
                 ephemeral=silent,
