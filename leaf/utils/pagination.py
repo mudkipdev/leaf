@@ -80,5 +80,9 @@ class PageModal(discord.ui.Modal, title="Skip to Page"):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if self.page.value.isdigit():
             self.paginated_view.set_index(int(self.page.value) - 1)
-
-        await self.paginated_view.update(interaction)
+            await self.paginated_view.update(interaction)
+        else:
+            await interaction.response.send_message(embed = discord.Embed(
+                description = "That page number is invalid.",
+                color = discord.Color.dark_embed()
+            ), ephemeral = True)
