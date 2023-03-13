@@ -4,11 +4,11 @@ import tomllib
 
 
 def main() -> None:
-    with open("config.toml") as config_file:
+    with open("config.toml", "rb") as config_file:
         config = tomllib.load(config_file)
 
     bot = LeafBot(config)
-    bot.run()
+    bot.run(config["token"])
 
 
 if __name__ == "__main__":
