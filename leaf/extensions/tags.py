@@ -17,7 +17,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     async def list_tags(
         self,
         interaction: discord.Interaction,
-        starting_page: Optional[int] = 0,
+        starting_page: Optional[int] = 1,
         silent: Optional[bool] = False
     ):
         tags = await self.bot.database.fetch("SELECT * FROM tags WHERE guild_id = $1", interaction.guild.id)
@@ -29,16 +29,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 color = discord.Color.dark_embed())
             )
         else:
-            chunks = discord.utils.as_chunks(tags, 25)
+            chunks = list(discord.utils.as_chunks(tags, 15))
             for index, chunk in enumerate(chunks):
                 embed = discord.Embed(
                     description = "\n".join([f"• **{tag['name']}** (Uses: {tag['uses']})" for tag in chunk]),
                     color = discord.Color.dark_embed()
                 )
-                embed.set_footer(text=f"Page {index} / {len(chunks)}")
+                embed.set_footer(text=f"Page {index + 1} / {len(chunks)}")
                 embeds.append(embed)
         
-        paginator = Paginator(embeds = embeds, index = starting_page)
+        paginator = Paginator(embeds = embeds, index = starting_page - 1)
         await paginator.start(interaction, ephemeral = silent)
 
     @app_commands.describe(tag="The name of the tag to view.")
