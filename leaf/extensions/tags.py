@@ -30,11 +30,13 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
         else:
             chunks = discord.utils.as_chunks(tags, 25)
-            for chunk in chunks:
-                embeds.append(discord.Embed(
+            for index, chunk in enumerate(chunks):
+                embed = discord.Embed(
                     description = "\n".join([f"• **{tag['name']}** (Uses: {tag['uses']})" for tag in chunk]),
                     color = discord.Color.dark_embed()
-                ))
+                )
+                embed.set_footer(text=f"Page {index} / {len(chunks)}")
+                embeds.append(embed)
         
         paginator = Paginator(embeds = embeds, index = starting_page)
         await paginator.start(interaction, ephemeral = silent)
