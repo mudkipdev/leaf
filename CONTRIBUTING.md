@@ -3,15 +3,12 @@
 - [Python/Pip](https://python.org)
 - [Git](https://git-scm.com/)
 - [Poetry](https://pypi.org/project/poetry/)
-- [PostgreSQL](https://www.postgresql.org/download/)
+- [PostgreSQL](https://www.postgresql.org/download/) (optionally [pgAdmin](https://www.pgadmin.org/) to view your database with a UI)
 
 If you do not have Poetry already installed, run the following command:
 ```
 $ pip install poetry
 ```
-
-## PostgreSQL
-Leaf requires a PostgreSQL database to run. Download the database from [postgresql.org](https://www.postgresql.org/download/) and make sure it is running. Using another application like [pgAdmin](https://www.pgadmin.org/) is recommended to view the database using a friendly user interface.
 
 # Installation
 1. Clone the repository to a local directory.
@@ -36,4 +33,4 @@ $ python leaf
 ```
 
 # Contributing
-Create a new fork of the repository, make your changes, run `black <directory you have edited>`, and commit your changes to Git. Once you are done, create a pull request. **Do not make pull requests without opening an issue first!**
+Create a new fork of the repository, clone it, make your changes, run `black <directory you have edited>`, and commit your changes to Git. Once you are done, create a pull request. **Do not make pull requests without opening an issue first!**
