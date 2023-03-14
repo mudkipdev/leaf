@@ -77,6 +77,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(
         tag="The name of the tag to view.",
+        raw="Whether the Markdown in this tag should be escaped or not.",
         silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(name="view", description="Sends the content of a tag.")
