@@ -402,6 +402,55 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
                 )
 
+    @app_commands.describe(tag="The tag you wish to claim.")
+    @app_commands.command(
+        name="claim",
+        description="Claims an unclaimed tag. An unclaimed tag is a tag with no owner "
+        "because they have left the server.",
+    )
+    async def claim_tag(self, interaction: discord.Interaction, tag: str) -> None:
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+
+            if tag_record:
+                try:
+                    member = await interaction.guild.fetch_member(
+                        tag_record["owner_id"]
+                    )
+                    if member is not None:
+                        await interaction.response.send_message(
+                            embed=discord.Embed(
+                                description=f"Owner of the tag **{tag}** is still present in the server.",
+                                color=discord.Color.dark_embed(),
+                            ),
+                        )
+                except discord.NotFound:
+                    await self.bot.database.execute(
+                        "UPDATE tags SET owner_id = $1 WHERE name = $2",
+                        interaction.user.id,
+                        tag,
+                    )
+
+                    await interaction.response.send_message(
+                        interaction.user.mention,
+                        embed=discord.Embed(
+                            description=f"The tag has successfully been claimed by {interaction.user.mention}.",
+                            color=discord.Color.dark_embed(),
+                        ),
+                    )
+            else:
+                await interaction.response.send_message(
+                    interaction.user.mention,
+                    embed=discord.Embed(
+                        description=f"A tag with the name of **{tag}** does not exist",
+                        color=discord.Color.dark_embed(),
+                    ),
+                )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(TagsCog(bot))
