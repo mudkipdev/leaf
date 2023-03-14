@@ -408,7 +408,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         description="Claims an unclaimed tag. An unclaimed tag is a tag with no owner "
         "because they have left the server.",
     )
-    async def claim_tag(self, interaction: discord.Interaction, tag: str) -> None:
+    async def claim_tag(
+        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+    ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
                 "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
@@ -418,15 +420,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
             if tag_record:
                 try:
-                    member = await interaction.guild.fetch_member(
-                        tag_record["owner_id"]
+                    member = await self.bot.try_member(
+                        tag_record["owner_id"], guild=interaction.guild
                     )
                     if member is not None:
                         await interaction.response.send_message(
                             embed=discord.Embed(
-                                description=f"Owner of the tag **{tag}** is still present in the server.",
+                                description=f'The owner of the tag "{tag}" is still present in the server.',
                                 color=discord.Color.dark_embed(),
                             ),
+                            ephemeral=silent,
                         )
                 except discord.NotFound:
                     await self.bot.database.execute(
@@ -436,19 +439,19 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
 
                     await interaction.response.send_message(
-                        interaction.user.mention,
                         embed=discord.Embed(
-                            description=f"The tag has successfully been claimed by {interaction.user.mention}.",
+                            description=f'The tag "{tag}" has successfully been claimed by {interaction.user}.',
                             color=discord.Color.dark_embed(),
                         ),
+                        ephemeral=silent,
                     )
             else:
                 await interaction.response.send_message(
-                    interaction.user.mention,
                     embed=discord.Embed(
-                        description=f"A tag with the name of **{tag}** does not exist",
+                        description=f"A tag named **{tag}** does not exist",
                         color=discord.Color.dark_embed(),
                     ),
+                    ephemeral=silent,
                 )
 
 

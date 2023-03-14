@@ -34,3 +34,6 @@ class LeafBot(commands.Bot):
 
     async def try_user(self, id: int, /) -> discord.User:
         return self.get_user(id) or await self.fetch_user(id)
+
+    async def try_member(self, id: int, /, *, guild: discord.Guild) -> discord.Member:
+        return guild.get_member(id) or await guild.fetch_member(id)
