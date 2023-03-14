@@ -23,11 +23,11 @@ $ poetry install
 That's it! You have completed the installation. Now move on to the Running and Contributing sections.
 
 # Running
-Once you have completed the installation, make sure you enter Poetry's virtual environment.
+1. Once you have completed the installation, make sure you enter Poetry's virtual environment.
 ```sh
 $ poetry shell
 ```
-Now you can run the bot. Make sure the database is running as well.
+2. Now you can run the bot. Make sure the database is running as well.
 ```sh
 $ python leaf
 ```
