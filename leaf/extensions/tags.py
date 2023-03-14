@@ -448,7 +448,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             else:
                 await interaction.response.send_message(
                     embed=discord.Embed(
-                        description=f"A tag named **{tag}** does not exist",
+                        description=f'A tag named "{tag}" does not exist',
                         color=discord.Color.dark_embed(),
                     ),
                     ephemeral=silent,
