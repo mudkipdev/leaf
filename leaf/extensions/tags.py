@@ -14,6 +14,11 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
         self.bot = bot
 
+    async def check_perms(self, tag_record,  interaction: discord.Interaction) -> bool:
+        return tag_record["owner_id"] == interaction.user.id \
+            or interaction.user.guild_permissions.manage_guild \
+            or await self.bot.is_owner(interaction.user)
+
     @app_commands.describe(
         starting_page="The page to start on.",
         silent="Whether the response should only be visible to you.",
@@ -188,8 +193,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 return
 
             if (
-                tag_record["owner_id"] == interaction.user.id
-                or interaction.user.guild_permissions.manage_guild
+                await self.check_perms(tag_record, interaction)
             ):
                 await interaction.response.send_message(
                     embed=discord.Embed(
@@ -266,8 +270,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 return
 
             if (
-                tag_record["owner_id"] == interaction.user.id
-                or interaction.user.guild_permissions.manage_guild
+                await self.check_perms(tag_record, interaction)
             ):
                 await self.bot.database.execute(
                     "UPDATE Tags SET deleted = true WHERE name = $1;", tag
@@ -356,8 +359,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
             if tag_record:
                 if (
-                    tag_record["owner_id"] == interaction.user.id
-                    or interaction.user.guild_permissions.manage_guild
+                    await self.check_perms(tag_record, interaction)
                 ):
                     if user.bot:
                         await interaction.response.send_message(
