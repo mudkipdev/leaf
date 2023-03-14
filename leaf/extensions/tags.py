@@ -96,7 +96,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
             if tag_record:
                 embed = discord.Embed(
-                    title=tag_record["name"], color=discord.Color.dark_embed()
+                    title=tag_record["name"],
+                    description=tag_record["content"],
+                    color=discord.Color.dark_embed(),
                 )
                 if raw:
                     embed.description = discord.utils.escape_markdown(
