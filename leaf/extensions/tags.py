@@ -81,7 +81,11 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     )
     @app_commands.command(name="view", description="Sends the content of a tag.")
     async def view_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        raw: Optional[bool] = False,
+        silent: Optional[bool] = False,
     ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
@@ -91,14 +95,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
 
             if tag_record:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        title=tag_record["name"],
-                        description=tag_record["content"],
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
+                embed = discord.Embed(
+                    title=tag_record["name"], color=discord.Color.dark_embed()
                 )
+                if raw:
+                    embed.description = discord.utils.escape_markdown(
+                        tag_record["content"]
+                    )
+                await interaction.response.send_message(embed=embed)
                 await self.bot.database.execute(
                     "UPDATE tags SET uses = $1 WHERE name = $2 and guild_id = $3;",
                     tag_record["uses"] + 1,
