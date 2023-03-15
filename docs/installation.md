@@ -20,7 +20,7 @@ $ cd leaf
 ```sh
 $ poetry install
 ```
-That's it! You have completed the installation. Now move on to the Running and Contributing sections.
+That's it! You have completed the installation. Now move on to the running section.
 
 ## Running
 1. Once you have completed the installation, make sure you enter Poetry's virtual environment.
