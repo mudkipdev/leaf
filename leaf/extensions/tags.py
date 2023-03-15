@@ -5,14 +5,18 @@ from discord import app_commands
 import discord
 import asyncio
 import pytz
-
-from typing import Optional
+from fuzzywuzzy import process, fuzz
+from cachetools import LRUCache
+from typing import Optional, List
 
 
 @app_commands.guild_only()
 class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
         self.bot = bot
+        # Cache upu to 1000 items and automatically discard the least recently used items.
+        self.tag_cache = LRUCache(maxsize=1000)
+        self.autocomplete_cache = LRUCache(maxsize=10000)
 
     async def check_permissions(
         self, tag_record: int, interaction: discord.Interaction
@@ -22,6 +26,46 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             or interaction.user.guild_permissions.manage_guild
             or await self.bot.is_owner(interaction.user)
         )
+
+    # Possible additional performance optimizations:
+    # 1) Paginate records into batches and fetch them in chunks of 50.
+    # 2) Timeout for database queries.
+    async def tag_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        if not current:
+            return []
+
+        # Check if the autocomplete results are already in the cache
+        cache_key = f"{interaction.guild.id}:{current.lower()}"
+        if cache_key in self.autocomplete_cache:
+            tag_records = self.autocomplete_cache[cache_key]
+        else:
+            # Fetch tag records from the cache or database
+            prefix = current.lower()
+            if (
+                interaction.guild.id in self.tag_cache
+                and prefix in self.tag_cache[interaction.guild.id]
+            ):
+                tag_records = self.tag_cache[interaction.guild.id][prefix]
+            else:
+                tag_records = await self.bot.database.fetch(
+                    "SELECT * FROM tags WHERE guild_id = $1 AND name ILIKE $2 AND deleted = FALSE",
+                    interaction.guild.id,
+                    f"{prefix}%",
+                )
+                # Cache the tag records
+                if interaction.guild.id not in self.tag_cache:
+                    self.tag_cache[interaction.guild.id] = {}
+                self.tag_cache[interaction.guild.id][prefix] = tag_records
+
+            # Cache the autocomplete results
+            self.autocomplete_cache[cache_key] = tag_records
+
+        return [
+            app_commands.Choice(name=tag["name"], value=tag["name"])
+            for tag in tag_records
+        ]
 
     @app_commands.describe(
         starting_page="The page to start on.",
@@ -76,11 +120,62 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             await interaction.response.send_message(embed=embeds[0])
 
     @app_commands.describe(
+        tag="The name of the tag to search.",
+        silent="Whether the response should only be visible to you.",
+    )
+    @app_commands.command(name="search", description="Searches for the requested tag.")
+    async def search_tag(
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        silent: Optional[bool] = False,
+    ) -> None:
+        tag_records = await self.bot.database.fetch(
+            "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
+            interaction.guild.id,
+        )
+
+        if tag_records:
+            tag_names = [tag_record["name"] for tag_record in tag_records]
+            matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)
+
+            similar_tags = [
+                match[0] for match in matches if match[1] >= 85
+            ]  # Similarity threshold currently set to 85%.
+
+            if similar_tags:
+                tag_records = await self.bot.database.fetch(
+                    "SELECT * FROM tags WHERE name = ANY($1::text[]) AND guild_id = $2 AND deleted = FALSE",
+                    tuple(similar_tags),
+                    interaction.guild.id,
+                )
+                for tag_record in tag_records:
+                    embed = discord.Embed(
+                        description="\n".join(
+                            [
+                                f"• **{tag_record['name']}**"
+                                for tag_record in tag_records
+                            ]
+                        ),
+                        color=discord.Color.dark_embed(),
+                    )
+                await interaction.response.send_message(embed=embed, ephemeral=silent)
+            else:
+                await interaction.response.send_message(
+                    f"No similar tags found for '{tag}'.", ephemeral=silent
+                )
+        else:
+            await interaction.response.send_message(
+                f"No tags found for '{tag}'.", ephemeral=silent
+            )
+
+    @app_commands.describe(
         tag="The name of the tag to view.",
         raw="Whether the Markdown in this tag should be escaped or not.",
         silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(name="view", description="Sends the content of a tag.")
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def view_tag(
         self,
         interaction: discord.Interaction,
@@ -105,7 +200,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed.description = discord.utils.escape_markdown(
                         tag_record["content"]
                     )
-                await interaction.response.send_message(embed=embed)
+                await interaction.response.send_message(embed=embed, ephemeral=silent)
                 await self.bot.database.execute(
                     "UPDATE tags SET uses = $1 WHERE name = $2 and guild_id = $3;",
                     tag_record["uses"] + 1,
