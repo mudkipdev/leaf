@@ -16,6 +16,9 @@ discord-py = "^2.2.2"
 jishaku = "^2.5.1"
 asyncpg = "^0.27.0"
 pytz = "^2022.7.1"
+fuzzywuzzy = "^0.18.0"
+python-levenshtein = "^0.20.9"
+cachetools = "^5.3.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"
