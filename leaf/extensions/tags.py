@@ -33,8 +33,6 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     async def tag_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        if not current:
-            return []
 
         # Check if the autocomplete results are already in the cache
         cache_key = f"{interaction.guild.id}:{current.lower()}"
