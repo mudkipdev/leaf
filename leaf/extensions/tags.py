@@ -301,6 +301,21 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 return
 
             if await self.check_permissions(tag_record["owner_id"], interaction):
+                new_name_tag_record = await self.bot.database.fetchrow(
+                    "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                    tag,
+                    interaction.guild.id,
+                )
+
+                if new_name_tag_record:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            description="A tag with that name already exists.",
+                            color=discord.Color.dark_embed(),
+                        )
+                    )
+                    return
+
                 await self.bot.database.execute(
                     "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
                     new_name,
