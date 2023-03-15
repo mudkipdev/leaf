@@ -9,7 +9,6 @@ from fuzzywuzzy import process, fuzz
 from cachetools import LRUCache
 from typing import Optional, List
 
-
 @app_commands.guild_only()
 class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
@@ -264,7 +263,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
                 await message.reply(
                     embed=discord.Embed(
-                        description="Your tag has successfully been created.",
+                        description="The tag has successfully been created.",
                         color=discord.Color.dark_embed(),
                     )
                 )
@@ -272,6 +271,52 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="That tag already exists.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+
+    @app_commands.describe(tag="The name of the tag to rename.", new_name="The new name of the tag.")
+    @app_commands.autocomplete(tag=tag_autocomplete)
+    @app_commands.command(name="rename", description="Changes the name of a tag.")
+    async def rename_tag(
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        new_name: str
+    ) -> None:
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id
+            )
+
+            if not tag_record:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="That tag does not exist.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+                return
+            
+            if await self.check_permissions(tag_record["owner_id"], interaction):
+                await self.bot.database.execute(
+                    "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
+                    new_name,
+                    tag,
+                    interaction.guild.id,
+                )
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="The tag has successfully been renamed.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You do not have permission to rename that tag.",
                         color=discord.Color.dark_embed(),
                     )
                 )
@@ -334,7 +379,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
                 await message.reply(
                     embed=discord.Embed(
-                        description="Your tag has successfully been edited.",
+                        description="The tag has successfully been edited.",
                         color=discord.Color.dark_embed(),
                     )
                 )
