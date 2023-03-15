@@ -278,6 +278,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(tag="The name of the tag to edit.")
     @app_commands.command(name="edit", description="Edits the content of a tag.")
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def edit_tag(self, interaction: discord.Interaction, tag: str) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
@@ -350,6 +351,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(name="delete", description="Deletes a tag from the server.")
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def delete_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
@@ -395,6 +397,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(name="info", description="Sends the info and stats of a tag.")
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def tag_info(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
@@ -446,6 +449,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(
         name="transfer", description="Transfers a tag to a different owner."
     )
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def transfer_tag(
         self, interaction: discord.Interaction, tag: str, user: discord.Member
     ) -> None:
@@ -501,6 +505,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         description="Claims an unclaimed tag. An unclaimed tag is a tag with no owner "
         "because they have left the server.",
     )
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def claim_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
