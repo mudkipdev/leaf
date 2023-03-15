@@ -310,7 +310,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 if new_name_tag_record:
                     await interaction.response.send_message(
                         embed=discord.Embed(
-                            description="A tag with that name already exists.",
+                            description=f"A tag named {new_name} already exists.",
                             color=discord.Color.dark_embed(),
                         )
                     )
