@@ -1,0 +1,7 @@
+site_name: Leaf
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: green
+    accent: light green
