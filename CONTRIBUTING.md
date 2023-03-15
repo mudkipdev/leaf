@@ -1,1 +1,0 @@
-The [CONTRIBUTING.md page](https://mudkipdev.github.io/leaf/installation) has moved to the official docs.
