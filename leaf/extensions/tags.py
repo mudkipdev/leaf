@@ -85,7 +85,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             tags = await self.bot.database.fetch(query, interaction.guild.id)
 
         embeds = []
-        if len(tags) == 0:
+        if not tags:
             embeds.append(
                 discord.Embed(
                     description=f"There are no tags in this server."
@@ -114,6 +114,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 ),
                 ephemeral=silent,
             )
+            return
 
         paginator = Paginator(embeds=embeds, index=starting_page - 1)
 
