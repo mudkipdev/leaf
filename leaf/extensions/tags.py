@@ -65,6 +65,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         ]
 
     @app_commands.describe(
+        user="Optional filter for tags by a specific user.",
         starting_page="The page to start on.",
         silent="Whether the response should only be visible to you.",
     )
@@ -72,19 +73,24 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     async def list_tags(
         self,
         interaction: discord.Interaction,
+        user: Optional[discord.Member] = None,
         starting_page: Optional[int] = 1,
         silent: Optional[bool] = False,
     ) -> None:
-        tags = await self.bot.database.fetch(
-            "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
-            interaction.guild.id,
-        )
-        embeds = []
+        if user is not None:
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE"
+            tags = await self.bot.database.fetch(query, interaction.guild.id, user.id)
+        else:
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE"
+            tags = await self.bot.database.fetch(query, interaction.guild.id)
 
+        embeds = []
         if not tags:
             embeds.append(
                 discord.Embed(
-                    description="There are no tags in this server.",
+                    description=f"There are no tags in this server."
+                    if user is None
+                    else f"{user.name} does not have any tags in this server.",
                     color=discord.Color.dark_embed(),
                 )
             )
@@ -100,7 +106,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed.set_footer(text=f"Page {index + 1} / {len(chunks)}")
                 embeds.append(embed)
 
-        if not 0 <= (starting_page - 1) <= len(embeds):
+        if not 0 <= (starting_page - 1) < len(embeds):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     description="That page does not exist.",
