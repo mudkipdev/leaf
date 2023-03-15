@@ -65,7 +65,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         ]
 
     @app_commands.describe(
-        user="The user you wish to search for.",
+        user="Optional filter for tags by a specific user.",
         starting_page="The page to start on.",
         silent="Whether the response should only be visible to you.",
     )
@@ -116,9 +116,11 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
             return
 
-        paginator = Paginator(embeds=embeds, index=starting_page - 1)
-
-        await paginator.start(interaction, ephemeral=silent)
+        if tags:
+            paginator = Paginator(embeds=embeds, index=starting_page - 1)
+            await paginator.start(interaction, ephemeral=silent)
+        else:
+            await interaction.response.send_message(embed=embeds[0])
 
     @app_commands.describe(
         tag="The name of the tag to search.",
