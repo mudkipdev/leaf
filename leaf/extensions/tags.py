@@ -84,9 +84,6 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE ORDER BY name ASC"
             tags = await self.bot.database.fetch(query, interaction.guild.id)
 
-        # sort the tags alphabetically by name
-        tags = sorted(tags, key=lambda tag: tag["name"])
-
         embeds = []
         if not tags:
             embeds.append(
