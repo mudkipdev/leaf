@@ -2,16 +2,23 @@ from discord.ext import commands
 import discord
 import asyncio
 
-from typing import List
+from typing import Optional, List
 
 __all__ = ("Paginator",)
 
 
 class Paginator:
-    def __init__(self, embeds: List[discord.Embed], index: int = 0) -> None:
-        self.paginated_view = PaginatedView(embeds)
-        self.embeds: List[discord.Embed] = embeds
-        self.index: int = index
+    def __init__(
+        self,
+        embeds: List[discord.Embed],
+        *,
+        index: int = 0,
+        author: Optional[discord.User] = None
+    ) -> None:
+        self.embeds = embeds
+        self.index = index
+        self.author = author
+        self.paginated_view = PaginatedView(self.embeds, author=author)
 
     async def start(
         self,
@@ -31,10 +38,13 @@ class Paginator:
 
 
 class PaginatedView(discord.ui.View):
-    def __init__(self, embeds: List[discord.Embed]) -> None:
+    def __init__(
+        self, embeds: List[discord.Embed], *, author: Optional[discord.User] = None
+    ) -> None:
         super().__init__(timeout=None)
-        self.embeds: List[discord.Embed] = embeds
-        self.index: int = 0
+        self.embeds = embeds
+        self.index = 0
+        self.author = author
 
     @discord.ui.button(custom_id="previous", emoji="◀")
     async def previous(
@@ -47,6 +57,16 @@ class PaginatedView(discord.ui.View):
     async def page(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
+        if self.author and interaction.user != self.author:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You do not have permission to interact with this menu.",
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.send_modal(PageModal(self))
 
     @discord.ui.button(custom_id="next", emoji="▶")
@@ -57,6 +77,16 @@ class PaginatedView(discord.ui.View):
         await self.update(interaction)
 
     async def update(self, interaction: discord.Interaction) -> None:
+        if self.author and interaction.user != self.author:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You do not have permission to interact with this menu.",
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.edit_message(
             embed=self.embeds[self.index], view=self
         )
