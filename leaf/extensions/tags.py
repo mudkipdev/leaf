@@ -47,7 +47,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag_records = self.tag_cache[interaction.guild.id][prefix]
             else:
                 tag_records = await self.bot.database.fetch(
-                    "SELECT * FROM tags WHERE guild_id = $1 AND name ILIKE $2 AND deleted = FALSE",
+                    "SELECT * FROM tags WHERE guild_id = $1 AND name ILIKE $2 AND deleted = FALSE ORDER BY name ASC",
                     interaction.guild.id,
                     f"{prefix}%",
                 )
@@ -78,10 +78,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         silent: Optional[bool] = False,
     ) -> None:
         if user is not None:
-            query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE"
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE ORDER BY name ASC"
             tags = await self.bot.database.fetch(query, interaction.guild.id, user.id)
         else:
-            query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE"
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE ORDER BY name ASC"
             tags = await self.bot.database.fetch(query, interaction.guild.id)
 
         embeds = []
