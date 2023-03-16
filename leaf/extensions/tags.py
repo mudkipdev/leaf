@@ -117,7 +117,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             return
 
         if tags:
-            paginator = Paginator(embeds=embeds, index=starting_page - 1)
+            paginator = Paginator(
+                embeds=embeds, index=starting_page - 1, author=interaction.user
+            )
             await paginator.start(interaction, ephemeral=silent)
         else:
             await interaction.response.send_message(embed=embeds[0])
