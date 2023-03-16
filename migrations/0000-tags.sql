@@ -6,5 +6,7 @@ CREATE TABLE IF NOT EXISTS Tags (
     created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
     last_edited_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
     uses INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (name, guild_id)
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (name, guild_id, deleted)
 );
+

@@ -226,7 +226,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     async def create_tag(self, interaction: discord.Interaction, name: str) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2;",
+                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
                 name,
                 interaction.guild.id,
             )
@@ -459,6 +459,105 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     ),
                     ephemeral=silent,
                 )
+
+    @app_commands.describe(
+        tag="A deleted tag that you wish to restore.",
+        silent="Whether the response should only be visible to you.",
+    )
+    @app_commands.command(
+        name="restore", description="Recovers a previously deleted tag."
+    )
+    @app_commands.checks.has_permissions(manage_guild=False)
+    async def tag_restore(
+        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+    ) -> None:
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
+            tag,
+            interaction.guild.id,
+        )
+        if not tag_record:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="That tag does not exist.",
+                    color=discord.Color.dark_embed(),
+                )
+            )
+            return
+
+        # Check for duplicate tag names
+        duplicate_tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag,
+            interaction.guild.id,
+        )
+        if duplicate_tag_record:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="A non-deleted tag with that name already exists. Please reply with a new name for the tag.",
+                    color=discord.Color.dark_embed(),
+                )
+            )
+
+            def check(message):
+                return (
+                    message.channel == interaction.channel
+                    and message.author == interaction.user
+                )
+
+            try:
+                message = await self.bot.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError:
+                await interaction.followup.send("You took too long to respond.")
+                return
+
+            new_tag_name = message.content
+
+            if not new_tag_name:
+                await message.reply(
+                    embed=discord.Embed(
+                        description="Invalid tag name. Please try again.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+                return
+            elif await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                new_tag_name,
+                interaction.guild.id,
+            ):
+                await message.reply(
+                    embed=discord.Embed(
+                        description="That tag name is already taken. Please try again.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+                return
+
+            await self.bot.database.execute(
+                "UPDATE tags SET name = $1, deleted = FALSE WHERE name = $2 AND guild_id = $3 AND deleted = TRUE",
+                new_tag_name,
+                tag,
+                interaction.guild.id,
+            )
+            await message.reply(
+                embed=discord.Embed(
+                    description=f"The tag: {tag} has been renamed to {new_tag_name} and restored.",
+                    color=discord.Color.dark_embed(),
+                )
+            )
+        else:
+            await self.bot.database.execute(
+                "UPDATE tags SET deleted = FALSE WHERE name = $1 AND guild_id = $2",
+                tag,
+                interaction.guild.id,
+            )
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f"The tag: {tag} has been restored.",
+                    color=discord.Color.dark_embed(),
+                )
+            )
 
     @app_commands.describe(
         tag="The tag to view info for.",
