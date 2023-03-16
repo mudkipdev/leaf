@@ -18,7 +18,7 @@ class Paginator:
         self.embeds = embeds
         self.index = index
         self.author = author
-        self.paginated_view = PaginatedView(self.embeds, author=author)
+        self.paginated_view = PaginatedView(self.embeds, author=self.author)
 
     async def start(
         self,
