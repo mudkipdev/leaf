@@ -440,6 +440,21 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
                 return
 
+            # Check for tags with the same name and guild_id that have already been deleted.
+            duplicate_tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
+                tag,
+                interaction.guild.id,
+            )
+
+            # Hard delete if there is a duplicate. Otherwise, we would need to rethink the DB structure
+            if duplicate_tag_record:
+                await self.bot.database.execute(
+                    "DELETE FROM Tags WHERE name = $1 AND guild_id = $2;",
+                    tag,
+                    interaction.guild.id,
+                )
+
             if await self.check_permissions(tag_record["owner_id"], interaction):
                 await self.bot.database.execute(
                     "UPDATE Tags SET deleted = true WHERE name = $1;", tag
@@ -481,7 +496,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description="That tag does not exist.",
                     color=discord.Color.dark_embed(),
-                )
+                ),
+                ephemeral=silent,
             )
             return
 
@@ -496,7 +512,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description="A non-deleted tag with that name already exists. Please reply with a new name for the tag.",
                     color=discord.Color.dark_embed(),
-                )
+                ),
+                ephemeral=silent,
             )
 
             def check(message):
@@ -530,7 +547,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="That tag name is already taken. Please try again.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
                 )
                 return
 
@@ -544,7 +561,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description=f"The tag: {tag} has been renamed to {new_tag_name} and restored.",
                     color=discord.Color.dark_embed(),
-                )
+                ),
             )
         else:
             await self.bot.database.execute(
@@ -556,7 +573,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 embed=discord.Embed(
                     description=f"The tag: {tag} has been restored.",
                     color=discord.Color.dark_embed(),
-                )
+                ),
+                ephemeral=silent,
             )
 
     @app_commands.describe(
