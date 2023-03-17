@@ -10,6 +10,7 @@ from cachetools import LRUCache
 from typing import Optional, List
 
 
+# noinspection PyUnresolvedReferences,PyTypeChecker
 @app_commands.guild_only()
 class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     def __init__(self, bot: LeafBot) -> None:
@@ -482,7 +483,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(
         name="restore", description="Recovers a previously deleted tag."
     )
-    @app_commands.checks.has_permissions(manage_guild=False)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def tag_restore(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
