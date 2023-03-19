@@ -477,14 +477,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
 
     @app_commands.describe(
-        tag="A deleted tag that you wish to restore.",
+        tag="The deleted tag that you wish to restore.",
         silent="Whether the response should only be visible to you.",
     )
     @app_commands.command(
         name="restore", description="Recovers a previously deleted tag."
     )
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def tag_restore(
+    async def restore_tag(
         self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
@@ -511,7 +511,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         if duplicate_tag_record:
             await interaction.response.send_message(
                 embed=discord.Embed(
-                    description="A non-deleted tag with that name already exists. Please reply with a new name for the tag.",
+                    description="A non-deleted tag with that name already exists. Please reply with the new name for the tag.",
                     color=discord.Color.dark_embed(),
                 ),
                 ephemeral=silent,
@@ -560,7 +560,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
             await message.reply(
                 embed=discord.Embed(
-                    description=f"The tag: {tag} has been renamed to {new_tag_name} and restored.",
+                    description=f'The tag "{tag}" has been renamed to {new_tag_name} and restored.',
                     color=discord.Color.dark_embed(),
                 ),
             )
@@ -572,7 +572,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
             await interaction.response.send_message(
                 embed=discord.Embed(
-                    description=f"The tag: {tag} has been restored.",
+                    description=f'The tag "{tag}" has been restored.',
                     color=discord.Color.dark_embed(),
                 ),
                 ephemeral=silent,
@@ -739,5 +739,5 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: LeafBot) -> None:
     await bot.add_cog(TagsCog(bot))
