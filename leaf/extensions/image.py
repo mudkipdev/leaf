@@ -1,15 +1,12 @@
 import enum
-
-import PIL.Image
-import aiohttp
-from discord.ext import commands
-from discord import app_commands
-import discord
-from bot import LeafBot
-from PIL import Image, ImageFilter, ImageOps
 import io
-
+from bot import LeafBot
 from utils import Paginator
+import aiohttp
+import discord
+from PIL import Image, ImageFilter, ImageOps
+from discord import app_commands
+from discord.ext import commands
 
 
 class FilterChoices(enum.Enum):
@@ -43,7 +40,7 @@ class FilterButton(discord.ui.Button):
 
 
 class FilterView(discord.ui.View):
-    def __init__(self, image: PIL.Image.Image) -> None:
+    def __init__(self, image: Image.Image) -> None:
         super().__init__(timeout=35)
         self.choice = None
         self.image = image
@@ -77,7 +74,7 @@ class ImageCog(commands.GroupCog, name="Image", group_name="image"):
         self.bot = bot
 
     @staticmethod
-    async def read_image(image: discord.Attachment) -> PIL.Image.Image:
+    async def read_image(image: discord.Attachment) -> Image.Image:
         async with aiohttp.ClientSession() as session:
             async with session.get(image.url) as response:
                 buffer = io.BytesIO(await response.read())
