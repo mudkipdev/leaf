@@ -8,4 +8,4 @@ extensions = [
 ]
 
 [database]
-connection_uri = "postgresql://postgres:ginger18!@localhost"
+connection_uri = ""
