@@ -1,5 +1,7 @@
 import enum
 import io
+from typing import Optional
+
 from bot import LeafBot
 from utils import Paginator
 import aiohttp
@@ -27,23 +29,39 @@ class FilterChoices(enum.Enum):
 
 
 class FilterButton(discord.ui.Button):
-    def __init__(self, label: str, choice: FilterChoices) -> None:
+    def __init__(
+        self, label: str, choice: FilterChoices, author: Optional[discord.User] = None
+    ) -> None:
         super().__init__(style=discord.ButtonStyle.secondary, label=label)
         self.choice = choice
+        self.author = author
 
     @discord.ui.button()
     async def callback(self, interaction: discord.Interaction) -> None:
         assert isinstance(self.view, FilterView)
+        if self.author and interaction.user != self.author:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You do not have permission to interact with this menu.",
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.defer()
         self.view.choice = self.choice
         await self.view.on_button_clicked(self.choice, interaction)
 
 
 class FilterView(discord.ui.View):
-    def __init__(self, image: Image.Image) -> None:
+    def __init__(
+        self, image: Image.Image, author: Optional[discord.User] = None
+    ) -> None:
         super().__init__(timeout=35)
         self.choice = None
         self.image = image
+        self.author = author
 
         for choice in FilterChoices:
             button = FilterButton(label=choice.name.lower(), choice=choice)
@@ -60,7 +78,7 @@ class FilterView(discord.ui.View):
         file = discord.File(buffer, filename="processed_image.jpg")
 
         await interaction.edit_original_response(
-            attachments=[file], view=FilterView(image=self.image)
+            attachments=[file], view=FilterView(image=self.image, author=self.author)
         )
 
     async def on_button_clicked(self, choice, interaction: discord.Interaction) -> None:
@@ -95,7 +113,7 @@ class ImageCog(commands.GroupCog, name="Image", group_name="image"):
 
         img = await self.read_image(image)
 
-        view = FilterView(image=img)
+        view = FilterView(image=img, author=interaction.user)
 
         buffer = io.BytesIO()
         img = img.convert("RGB")
