@@ -32,7 +32,9 @@ class FilterButton(discord.ui.Button):
     def __init__(
         self, label: str, choice: FilterChoices, author: Optional[discord.User] = None
     ) -> None:
-        super().__init__(style=discord.ButtonStyle.secondary, label=label)
+        super().__init__(
+            style=discord.ButtonStyle.secondary, label=label.title().replace("_", " ")
+        )
         self.choice = choice
         self.author = author
 
