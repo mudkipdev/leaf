@@ -1,5 +1,5 @@
 # Your Discord bot token used for logging in.
-token = "NjU2NTc3ODE2MTYyNDY3ODQ0.Gzh2vc.aH7zbzFUP5xXEV7Ratp6E1bEWS0VM0dHDe03yM"
+token = ""
 # The bot extensions to load on startup.
 extensions = [
     "jishaku",
@@ -8,4 +8,4 @@ extensions = [
 ]
 
 [database]
-connection_uri = "postgresql://postgres:ginger18!@localhost"
+connection_uri = ""
