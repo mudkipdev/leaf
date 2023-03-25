@@ -1,6 +1,5 @@
 # Your Discord bot token used for logging in.
 token = ""
-
 # The bot extensions to load on startup.
 extensions = [
     "jishaku",
