@@ -39,6 +39,9 @@ class FilterButton(discord.ui.Button):
     @discord.ui.button()
     async def callback(self, interaction: discord.Interaction) -> None:
         assert isinstance(self.view, FilterView)
+        if self.disabled:
+            return
+
         if self.author and interaction.user != self.author:
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -51,24 +54,30 @@ class FilterButton(discord.ui.Button):
 
         await interaction.response.defer()
         self.view.choice = self.choice
-        await self.view.on_button_clicked(self.choice, interaction)
+
+        await self.view.update_view(interaction)
 
 
 class FilterView(discord.ui.View):
     def __init__(
-        self, image: Image.Image, author: Optional[discord.User] = None
+        self,
+        image: Image.Image,
+        author: Optional[discord.User],
+        interaction: Optional[discord.Interaction],
     ) -> None:
         super().__init__(timeout=35)
         self.choice = None
         self.image = image
         self.author = author
+        self.interaction = interaction
 
         for choice in FilterChoices:
             button = FilterButton(label=choice.name.lower(), choice=choice)
             self.add_item(button)
 
-    async def callback(self, interaction: discord.Interaction) -> None:
+    async def update_view(self, interaction: discord.Interaction) -> None:
         assert self.choice is not None
+        self.interaction = interaction
         img = self.image.filter(self.choice.filter)
         buffer = io.BytesIO()
         img = img.convert("RGB")
@@ -77,13 +86,23 @@ class FilterView(discord.ui.View):
 
         file = discord.File(buffer, filename="processed_image.jpg")
 
-        await interaction.edit_original_response(
-            attachments=[file], view=FilterView(image=self.image, author=self.author)
+        await self.interaction.edit_original_response(
+            attachments=[file],
+            view=FilterView(
+                image=self.image, author=self.author, interaction=interaction
+            ),
         )
 
-    async def on_button_clicked(self, choice, interaction: discord.Interaction) -> None:
-        self.choice = choice
-        await self.callback(interaction)
+    async def on_timeout(self) -> None:
+        view = FilterView(
+            image=self.image, author=self.author, interaction=self.interaction
+        )
+        for button in view.children:
+            button.disabled = True
+
+        await self.interaction.edit_original_response(view=view)
+
+        super().stop()
 
 
 @app_commands.guild_only()
@@ -113,7 +132,7 @@ class ImageCog(commands.GroupCog, name="Image", group_name="image"):
 
         img = await self.read_image(image)
 
-        view = FilterView(image=img, author=interaction.user)
+        view = FilterView(image=img, author=interaction.user, interaction=interaction)
 
         buffer = io.BytesIO()
         img = img.convert("RGB")
