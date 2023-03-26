@@ -99,7 +99,9 @@ class FilterView(discord.ui.View):
         for child in self.children:
             if isinstance(child, FilterButton):
                 child.disabled = True
+
         await self.interaction.edit_original_response(view=self)
+
         super().stop()
 
 
