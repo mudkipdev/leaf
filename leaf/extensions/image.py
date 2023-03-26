@@ -67,7 +67,7 @@ class FilterView(discord.ui.View):
         author: Optional[discord.User],
         interaction: Optional[discord.Interaction],
     ) -> None:
-        super().__init__(timeout=5)
+        super().__init__(timeout=35)
         self.choice = None
         self.image = image
         self.author = author
