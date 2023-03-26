@@ -67,7 +67,7 @@ class FilterView(discord.ui.View):
         author: Optional[discord.User],
         interaction: Optional[discord.Interaction],
     ) -> None:
-        super().__init__(timeout=35)
+        super().__init__(timeout=5)
         self.choice = None
         self.image = image
         self.author = author
@@ -79,7 +79,7 @@ class FilterView(discord.ui.View):
 
     async def update_view(self, interaction: discord.Interaction) -> None:
         assert self.choice is not None
-        self.interaction = interaction
+
         img = self.image.filter(self.choice.filter)
         buffer = io.BytesIO()
         img = img.convert("RGB")
@@ -96,14 +96,10 @@ class FilterView(discord.ui.View):
         )
 
     async def on_timeout(self) -> None:
-        view = FilterView(
-            image=self.image, author=self.author, interaction=self.interaction
-        )
-        for button in view.children:
-            button.disabled = True
-
-        await self.interaction.edit_original_response(view=view)
-
+        for child in self.children:
+            if isinstance(child, FilterButton):
+                child.disabled = True
+        await self.interaction.edit_original_response(view=self)
         super().stop()
 
 
