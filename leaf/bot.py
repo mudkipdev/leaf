@@ -16,7 +16,7 @@ class LeafBot(commands.Bot):
         super().__init__(
             intents=intents,
             command_prefix=commands.when_mentioned,
-            case_insenstiive=True,
+            case_insensitive=True,
             allowed_mentions=discord.AllowedMentions(everyone=False),
         )
 
