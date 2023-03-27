@@ -44,7 +44,7 @@ class FilterButton(discord.ui.Button):
 
 class FilterView(discord.ui.View):
     def __init__(self, image: PIL.Image.Image) -> None:
-        super().__init__(timeout=35)
+        super().__init__(timeout=30)
         self.choice = None
         self.image = image
 
