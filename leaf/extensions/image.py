@@ -89,11 +89,11 @@ class FilterView(discord.ui.View):
 
         buffer = io.BytesIO()
 
-        image = await self.loop.run_in_executor(
-            self.executor,
-            self.apply_filter)
+        image = await self.loop.run_in_executor(self.executor, self.apply_filter)
 
-        file = await self.loop.run_in_executor(self.executor, lambda: image.convert("RGB").save(buffer, "JPEG"))
+        file = await self.loop.run_in_executor(
+            self.executor, lambda: image.convert("RGB").save(buffer, "JPEG")
+        )
 
         buffer.seek(0)
 
@@ -167,11 +167,11 @@ class ImageCog(commands.GroupCog, name="Image", group_name="image"):
         description="Creates a new image by interpolating between two input images, using a constant alpha:",
     )
     async def blend_image(
-            self,
-            interaction: discord.Interaction,
-            image1: discord.Attachment,
-            image2: discord.Attachment,
-            alpha: float,
+        self,
+        interaction: discord.Interaction,
+        image1: discord.Attachment,
+        image2: discord.Attachment,
+        alpha: float,
     ) -> None:
         await interaction.response.defer()
 
@@ -209,8 +209,7 @@ class ImageCog(commands.GroupCog, name="Image", group_name="image"):
         img = await self.loop.run_in_executor(self.executor, self.read_image, image)
         img = await img
         img = await self.loop.run_in_executor(self.executor, img.convert, "RGB")
-        img = await self.loop.run_in_executor(
-            self.executor, img.convert, "P")
+        img = await self.loop.run_in_executor(self.executor, img.convert, "P")
         image_colors = await self.loop.run_in_executor(self.executor, img.getcolors)
         palette = await self.loop.run_in_executor(self.executor, img.getpalette)
 
