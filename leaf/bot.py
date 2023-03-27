@@ -25,7 +25,17 @@ class LeafBot(commands.Bot):
             await self.load_extension(extension)
 
         self.database = await asyncpg.connect(self.config["database"]["connection_uri"])
-
+    
+    @tasks.loop(minutes=1.0)
+    async def update_activity(self):
+        await self.change_presence(activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name=f"{len(self.guilds)} server" + ("s" if len(self.guilds) != 1 else "")
+        )
+    
+    async def on_ready(self) -> None:
+        self.update_activity.start()
+    
     async def close(self) -> None:
         if self.database:
             await self.database.close()
