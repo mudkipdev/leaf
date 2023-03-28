@@ -3,7 +3,8 @@ token = ""
 # The bot extensions to load on startup.
 extensions = [
     "jishaku",
-    "extensions.tags"
+    "extensions.tags",
+    "extensions.image"
 ]
 
 [database]
