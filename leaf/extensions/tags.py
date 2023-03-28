@@ -18,6 +18,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         # Cache upu to 1000 items and automatically discard the least recently used items.
         self.tag_cache = LRUCache(maxsize=1000)
         self.autocomplete_cache = LRUCache(maxsize=10000)
+        self._reserved_tags_being_made = {}
 
     async def check_permissions(
         self, tag_record: int, interaction: discord.Interaction
@@ -64,6 +65,28 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             app_commands.Choice(name=tag["name"], value=tag["name"])
             for tag in tag_records
         ]
+
+    def is_tag_being_made(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+        except KeyError:
+            return False
+        else:
+            return name.lower() in being_made
+
+    def add_in_progress_tag(self, guild_id, name):
+        tags = self._reserved_tags_being_made.setdefault(guild_id, set())
+        tags.add(name.lower())
+
+    def remove_in_progress_tag(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+        except KeyError:
+            return
+
+        being_made.discard(name.lower())
+        if len(being_made) == 0:
+            del self._reserved_tags_being_made[guild_id]
 
     @app_commands.describe(
         user="Optional filter for tags by a specific user.",
@@ -232,7 +255,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 interaction.guild.id,
             )
 
-            if not tag_record:
+            if not tag_record and not self.is_tag_being_made(
+                interaction.guild.id, name
+            ):
+                self.add_in_progress_tag(interaction.guild.id, name)
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="Please reply to this message with your tag content within 5 minutes.",
@@ -271,6 +297,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     interaction.user.id,
                     message.content,
                 )
+                self.remove_in_progress_tag(interaction.guild.id, name)
                 await message.reply(
                     embed=discord.Embed(
                         description="The tag has successfully been created.",
