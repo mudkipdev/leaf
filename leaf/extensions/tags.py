@@ -343,7 +343,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     interaction.guild.id,
                 )
 
-                if new_name_tag_record:
+                if new_name_tag_record and self.is_tag_being_made(
+                    interaction.guild.id, new_name
+                ):
                     await interaction.response.send_message(
                         embed=discord.Embed(
                             description=f"A tag named {new_name} already exists.",
@@ -352,12 +354,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
                     return
 
+                self.add_in_progress_tag(interaction.guild.id, new_name)
+
                 await self.bot.database.execute(
                     "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
                     new_name,
                     tag,
                     interaction.guild.id,
                 )
+                self.remove_in_progress_tag(interaction.guild.id, new_name)
+
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="The tag has successfully been renamed.",
@@ -566,6 +572,14 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
                 )
                 return
+            elif self.is_tag_being_made(interaction.guild_id, new_tag_name):
+                await message.reply(
+                    embed=discord.Embed(
+                        description="That tag name is already taken. Please try again.",
+                        color=discord.Color.dark_embed(),
+                    )
+                )
+                return
             elif await self.bot.database.fetchrow(
                 "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
                 new_tag_name,
@@ -578,13 +592,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     ),
                 )
                 return
-
+            # Add the tag to in progress list so it cant be used in other commands.
+            self.add_in_progress_tag(interaction.guild_id, new_tag_name)
             await self.bot.database.execute(
                 "UPDATE tags SET name = $1, deleted = FALSE WHERE name = $2 AND guild_id = $3 AND deleted = TRUE",
                 new_tag_name,
                 tag,
                 interaction.guild.id,
             )
+            # Remove tag after DB is finished
+            self.remove_in_progress_tag(interaction.guild_id, new_tag_name)
             await message.reply(
                 embed=discord.Embed(
                     description=f'The tag "{tag}" has been renamed to {new_tag_name} and restored.',
