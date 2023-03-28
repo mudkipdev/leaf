@@ -85,7 +85,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             return
 
         being_made.discard(name.lower())
-        if len(being_made) == 0:
+        if not being_made:
             del self._reserved_tags_being_made[guild_id]
 
     @app_commands.describe(
