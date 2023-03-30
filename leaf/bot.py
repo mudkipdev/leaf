@@ -1,8 +1,5 @@
 __all__ = ("LeafBot",)
 
-from discord import Interaction
-from discord._types import ClientT
-from discord.app_commands import AppCommandError
 from discord.ext import tasks
 import discord
 import asyncpg
