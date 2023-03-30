@@ -80,7 +80,6 @@ class LeafBot(commands.Bot):
             )
         )
 
-    @commands.Cog.listener()
     async def on_guild_join(self, guild):
         e = discord.Embed(colour=0x53DDA4, title="New Guild")
         await self.send_guild_stats(e, guild)
