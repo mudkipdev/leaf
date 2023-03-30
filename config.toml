@@ -3,8 +3,17 @@ token = ""
 # The bot extensions to load on startup.
 extensions = [
     "jishaku",
-    "extensions.tags"
-]
+    "extensions.tags",
 
+]
+# Postgres database connection.
 [database]
 connection_uri = ""
+#Logging settings.
+[logging]
+webhook_url = ""
+logging_level = "WARNING"
+bot_name ="leaf"
+
+
+
