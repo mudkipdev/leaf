@@ -64,7 +64,7 @@ class LeafBot(commands.Bot):
         logging.getLogger("discord.http").setLevel(logging.WARNING)
 
         handler = RotatingFileHandler(
-            filename="leaf.log",
+            filename="logs/leaf.log",
             encoding="utf-8",
             mode="w",
             maxBytes=max_bytes,
