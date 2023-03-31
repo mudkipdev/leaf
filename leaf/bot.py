@@ -1,5 +1,6 @@
 __all__ = ("LeafBot",)
 
+import os
 from logging.handlers import RotatingFileHandler
 
 from discord.ext import tasks
@@ -63,13 +64,20 @@ class LeafBot(commands.Bot):
         logging.getLogger("discord").setLevel(logging.INFO)
         logging.getLogger("discord.http").setLevel(logging.WARNING)
 
+        log_dir = "logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        log_file = os.path.join(log_dir, "leaf.log")
+
         handler = RotatingFileHandler(
-            filename="logs/leaf.log",
+            filename=log_file,
             encoding="utf-8",
             mode="w",
             maxBytes=max_bytes,
             backupCount=5,
         )
+
         dt_fmt = "%Y-%m-%d %H:%M:%S"
         fmt = logging.Formatter(
             "[{asctime}] [{levelname:<7}] {name}: {message}", dt_fmt, style="{"
