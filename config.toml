@@ -4,7 +4,6 @@ token = ""
 extensions = [
     "jishaku",
     "extensions.tags",
-
 ]
 # Postgres database connection.
 [database]
@@ -12,6 +11,7 @@ connection_uri = ""
 #Logging settings.
 [logging]
 webhook_url = ""
+#Logging levels (NOTSET, DEBUG, INFO, WARNING, ERROR, CRITICAL) https://docs.python.org/3/library/logging.html#levels
 logging_level = "WARNING"
 bot_name ="leaf"
 
