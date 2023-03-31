@@ -1,5 +1,7 @@
 __all__ = ("LeafBot",)
 
+from logging.handlers import RotatingFileHandler
+
 from discord.ext import tasks
 import discord
 import asyncpg
@@ -57,13 +59,22 @@ class LeafBot(commands.Bot):
         self.database = await asyncpg.connect(self.config["database"]["connection_uri"])
 
     def setup_logging(self, webhook_url: str):
-        log_format = "[%(asctime)s] %(levelname)s %(name)s: %(message)s"
-        discord_format = logging.Formatter(log_format)
+        max_bytes = 32 * 1024 * 1024  # 32 MiB
+        logging.getLogger('discord').setLevel(logging.INFO)
+        logging.getLogger('discord.http').setLevel(logging.WARNING)
+
+        handler = RotatingFileHandler(filename='leaf.log', encoding='utf-8', mode='w', maxBytes=max_bytes,
+                                      backupCount=5)
+        dt_fmt = '%Y-%m-%d %H:%M:%S'
+        fmt = logging.Formatter('[{asctime}] [{levelname:<7}] {name}: {message}', dt_fmt, style='{')
+        handler.setFormatter(fmt)
+
+        self.logger.addHandler(handler)
 
         discord_handler = DiscordHandler(
             service_name=self.config["logging"]["bot_name"], webhook_url=webhook_url
         )
-        discord_handler.setFormatter(discord_format)
+        discord_handler.setFormatter(fmt)
 
         self.logger.setLevel(self.config["logging"]["logging_level"])
         self.logger.addHandler(discord_handler)
