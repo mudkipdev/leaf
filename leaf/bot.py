@@ -3,6 +3,7 @@ __all__ = ("LeafBot",)
 import os
 from logging.handlers import RotatingFileHandler
 
+import discord_logging.handler
 from discord.ext import tasks
 import discord
 import asyncpg
@@ -12,6 +13,19 @@ from discord_logging.handler import DiscordHandler
 
 intents = discord.Intents.default()
 intents.message_content = True
+
+
+class InvalidWebhookError(Exception):
+    def __init__(self, message, webhook_url):
+        super().__init__(message)
+        self.message = message
+        self.webhook_url = webhook_url
+
+    def log_error(self):
+        # Custom method to log the error along with the webhook URL
+        print(
+            f"Webhook error occurred for URL: {self.webhook_url}. Message: {self.message}"
+        )
 
 
 class LeafBot(commands.Bot):
@@ -27,8 +41,9 @@ class LeafBot(commands.Bot):
             case_insensitive=True,
             allowed_mentions=discord.AllowedMentions(everyone=False),
         )
+        self.setup_logging()
 
-        self.discord_handler = self.setup_logging(self.webhook_url)
+        self.discord_handler = self.setup_discord_handler()
 
     async def send_guild_stats(self, e, guild):
         e.add_field(name="Name", value=guild.name)
@@ -59,7 +74,7 @@ class LeafBot(commands.Bot):
 
         self.database = await asyncpg.connect(self.config["database"]["connection_uri"])
 
-    def setup_logging(self, webhook_url: str):
+    def setup_logging(self):
         max_bytes = 32 * 1024 * 1024  # 32 MiB
         logging.getLogger("discord").setLevel(logging.INFO)
         logging.getLogger("discord.http").setLevel(logging.WARNING)
@@ -85,16 +100,6 @@ class LeafBot(commands.Bot):
         handler.setFormatter(fmt)
 
         self.logger.addHandler(handler)
-
-        discord_handler = DiscordHandler(
-            service_name=self.config["logging"]["bot_name"], webhook_url=webhook_url
-        )
-        discord_handler.setFormatter(fmt)
-
-        self.logger.setLevel(self.config["logging"]["logging_level"])
-        self.logger.addHandler(discord_handler)
-
-        return discord_handler
 
     @tasks.loop(minutes=1.0)
     async def update_activity(self) -> None:
@@ -124,3 +129,33 @@ class LeafBot(commands.Bot):
 
     async def try_member(self, id: int, /, *, guild: discord.Guild) -> discord.Member:
         return guild.get_member(id) or await guild.fetch_member(id)
+
+    def setup_discord_handler(self):
+        try:
+            if not self.webhook_url:
+                error_msg = (
+                    "An error occurred while setting up the Discord logger. Check the webhook URL in the "
+                    "configuration file. Defaulting to the basic logger."
+                )
+                logging.error(error_msg)
+                # Log the error and raise the exception
+                raise InvalidWebhookError(error_msg, self.webhook_url)
+
+            dt_fmt = "%Y-%m-%d %H:%M:%S"
+            fmt = logging.Formatter(
+                "[{asctime}] [{levelname:<7}] {name}: {message}", dt_fmt, style="{"
+            )
+
+            discord_handler = DiscordHandler(
+                service_name=self.config["logging"]["bot_name"],
+                webhook_url=self.webhook_url,
+            )
+            discord_handler.setFormatter(fmt)
+
+            self.logger.setLevel(self.config["logging"]["logging_level"])
+            self.logger.addHandler(discord_handler)
+
+            return discord_handler
+
+        except InvalidWebhookError:
+            return None
