@@ -19,7 +19,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self.bot = bot
         # Cache upu to 1000 items and automatically discard the least recently used items.
         self.tag_cache = LRUCache(maxsize=1000)
-        self.autocomplete_cache = LRUCache(maxsize=10000)
+        self.autocomplete_cache = LRUCache(maxsize=1000)
         self._reserved_tags_being_made = {}
         self.logger = logging.getLogger("leaf_logger")
 
