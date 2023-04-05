@@ -402,7 +402,6 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag_record["id"],
                 alias_record["id"],
             )
-            print(tag_record["content"])
 
             await interaction.response.send_message(
                 embed=discord.Embed(
