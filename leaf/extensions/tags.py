@@ -1,3 +1,5 @@
+import logging
+
 from bot import LeafBot
 from utils import Paginator
 from discord.ext import commands
@@ -5,7 +7,7 @@ from discord import app_commands
 import discord
 import asyncio
 import pytz
-from fuzzywuzzy import process, fuzz
+from fuzzywuzzy import process
 from cachetools import LRUCache
 from typing import Optional, List
 
@@ -17,7 +19,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self.bot = bot
         # Cache upu to 1000 items and automatically discard the least recently used items.
         self.tag_cache = LRUCache(maxsize=1000)
-        self.autocomplete_cache = LRUCache(maxsize=10000)
+        self.autocomplete_cache = LRUCache(maxsize=1000)
+        self._reserved_tags_being_made = {}
+        self.logger = logging.getLogger("leaf_logger")
 
     async def check_permissions(
         self, tag_record: int, interaction: discord.Interaction
@@ -36,6 +40,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     ) -> List[app_commands.Choice[str]]:
         # Check if the autocomplete results are already in the cache
         cache_key = f"{interaction.guild.id}:{current.lower()}"
+
+        self.logger.debug(cache_key)
+
         if cache_key in self.autocomplete_cache:
             tag_records = self.autocomplete_cache[cache_key]
         else:
@@ -46,12 +53,15 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 and prefix in self.tag_cache[interaction.guild.id]
             ):
                 tag_records = self.tag_cache[interaction.guild.id][prefix]
+
+                self.logger.debug(tag_records)
             else:
                 tag_records = await self.bot.database.fetch(
                     "SELECT * FROM tags WHERE guild_id = $1 AND name ILIKE $2 AND deleted = FALSE ORDER BY name ASC",
                     interaction.guild.id,
                     f"{prefix}%",
                 )
+                self.logger.debug(tag_records)
                 # Cache the tag records
                 if interaction.guild.id not in self.tag_cache:
                     self.tag_cache[interaction.guild.id] = {}
@@ -60,10 +70,38 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             # Cache the autocomplete results
             self.autocomplete_cache[cache_key] = tag_records
 
+            self.logger.debug(self.autocomplete_cache)
+
         return [
             app_commands.Choice(name=tag["name"], value=tag["name"])
             for tag in tag_records
         ]
+
+    def is_tag_being_made(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+            self.logger.debug(f"Tag: {tags} is current reserved.")
+        except KeyError as e:
+            self.logger.critical("An error occurred in tag creation.", exc_info=e)
+            return False
+        else:
+            return name.lower() in being_made
+
+    def add_in_progress_tag(self, guild_id, name):
+        tags = self._reserved_tags_being_made.setdefault(guild_id, set())
+        tags.add(name.lower())
+        self.logger.debug(f"Tag: {tags} is being reserved.")
+
+    def remove_in_progress_tag(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+        except KeyError:
+            self.logger.critical("An error occurred in tag removal.", exc_info=e)
+            return
+
+        being_made.discard(name.lower())
+        if not being_made:
+            del self._reserved_tags_being_made[guild_id]
 
     @app_commands.describe(
         user="Optional filter for tags by a specific user.",
@@ -81,9 +119,12 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         if user is not None:
             query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE ORDER BY name ASC"
             tags = await self.bot.database.fetch(query, interaction.guild.id, user.id)
+
         else:
             query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE ORDER BY name ASC"
             tags = await self.bot.database.fetch(query, interaction.guild.id)
+
+        self.logger.debug(tags)
 
         embeds = []
         if not tags:
@@ -97,6 +138,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             )
         else:
             chunks = list(discord.utils.as_chunks(tags, 15))
+            self.logger.info(f"Creating embed with {chunks} chunks.")
             for index, chunk in enumerate(chunks):
                 embed = discord.Embed(
                     description="\n".join(
@@ -141,13 +183,21 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             interaction.guild.id,
         )
 
+        self.logger.debug(tag_records)
+
         if tag_records:
             tag_names = [tag_record["name"] for tag_record in tag_records]
             matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)
 
+            self.logger.debug(
+                f"Discovered tag names: {tag_names}\n Possible matches: {matches}"
+            )
+
             similar_tags = [
                 match[0] for match in matches if match[1] >= 85
             ]  # Similarity threshold currently set to 85%.
+
+            self.logger.debug(f"Similar tags: {similar_tags}")
 
             if similar_tags:
                 tag_records = await self.bot.database.fetch(
@@ -155,6 +205,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     tuple(similar_tags),
                     interaction.guild.id,
                 )
+                self.logger.debug(tag_records)
+
                 for tag_record in tag_records:
                     embed = discord.Embed(
                         description="\n".join(
@@ -195,6 +247,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag,
                 interaction.guild.id,
             )
+            self.logger.debug(tag_record)
 
             if tag_record:
                 embed = discord.Embed(
@@ -236,8 +289,12 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 name,
                 interaction.guild.id,
             )
+            self.logger.debug(tag_record)
 
-            if not tag_record:
+            if not tag_record and not self.is_tag_being_made(
+                interaction.guild.id, name
+            ):
+                self.add_in_progress_tag(interaction.guild.id, name)
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="Please reply to this message with your tag content within 5 minutes.",
@@ -257,7 +314,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     message = await self.bot.wait_for(
                         "message", timeout=300, check=check
                     )
-                except asyncio.TimeoutError:
+                except asyncio.TimeoutError as e:
+                    self.logger.info("Command timeout:", exc_info=e)
                     await interaction.channel.send(
                         interaction.user.mention,
                         embed=discord.Embed(
@@ -278,6 +336,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     interaction.user.id,
                     message.content,
                 )
+                self.remove_in_progress_tag(interaction.guild.id, name)
                 await message.reply(
                     embed=discord.Embed(
                         description="The tag has successfully been created.",
@@ -427,8 +486,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.describe(
         tag="The name of the tag to rename.", new_name="The new name of the tag."
     )
-    @app_commands.command(name="rename", description="Changes the name of a tag.")
     @app_commands.autocomplete(tag=tag_autocomplete)
+    @app_commands.command(name="rename", description="Changes the name of a tag.")
     async def rename_tag(
         self,
         interaction: discord.Interaction,
@@ -442,6 +501,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag,
                 interaction.guild.id,
             )
+
+            self.logger.debug(tag_record)
 
             if not tag_record:
                 await interaction.response.send_message(
@@ -459,8 +520,11 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     tag,
                     interaction.guild.id,
                 )
+                self.logger.debug(new_name_tag_record)
 
-                if new_name_tag_record:
+                if new_name_tag_record and self.is_tag_being_made(
+                    interaction.guild.id, new_name
+                ):
                     await interaction.response.send_message(
                         embed=discord.Embed(
                             description=f"A tag named {new_name} already exists.",
@@ -470,12 +534,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
                     return
 
+                self.add_in_progress_tag(interaction.guild.id, new_name)
+
                 await self.bot.database.execute(
                     "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
                     new_name,
                     tag,
                     interaction.guild.id,
                 )
+                self.remove_in_progress_tag(interaction.guild.id, new_name)
+
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="The tag has successfully been renamed.",
@@ -513,6 +581,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     ephemeral=silent,
                 )
                 return
+            self.logger.debug(tag_record)
 
             if not tag_record:
                 await interaction.response.send_message(
@@ -534,6 +603,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 )
                 message = await interaction.original_response()
 
+                self.logger.debug(message)
+
                 def check(message):
                     return (
                         message.channel == interaction.channel
@@ -544,7 +615,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     message = await self.bot.wait_for(
                         "message", timeout=300, check=check
                     )
-                except asyncio.TimeoutError:
+                except asyncio.TimeoutError as e:
+                    self.logger.info("Command timeout:", exc_info=e)
                     await interaction.channel.send(
                         interaction.user.mention,
                         embed=discord.Embed(
@@ -592,6 +664,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag,
                 interaction.guild.id,
             )
+            self.logger.debug(tag_record)
 
             if not tag_record:
                 await interaction.response.send_message(
@@ -609,6 +682,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag,
                 interaction.guild.id,
             )
+
+            self.logger.debug(duplicate_tag_record)
 
             # Hard delete if there is a duplicate. Otherwise, we would need to rethink the DB structure
             if duplicate_tag_record:
@@ -681,6 +756,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             tag,
             interaction.guild.id,
         )
+        self.logger.debug(tag_record)
+
         if not tag_record:
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -697,6 +774,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             tag,
             interaction.guild.id,
         )
+        self.logger.debug(duplicate_tag_record)
+
         if duplicate_tag_record:
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -714,7 +793,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
             try:
                 message = await self.bot.wait_for("message", timeout=300, check=check)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
+                self.logger.info("Timeout Error:", exc_info=e)
                 await interaction.followup.send("You took too long to respond.")
                 return
 
@@ -740,13 +820,16 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     ),
                 )
                 return
-
+            # Add the tag to in progress list so it cant be used in other commands.
+            self.add_in_progress_tag(interaction.guild_id, new_tag_name)
             await self.bot.database.execute(
                 "UPDATE tags SET name = $1, deleted = FALSE WHERE name = $2 AND guild_id = $3 AND deleted = TRUE",
                 new_tag_name,
                 tag,
                 interaction.guild.id,
             )
+            # Remove tag after DB is finished
+            self.remove_in_progress_tag(interaction.guild_id, new_tag_name)
             await message.reply(
                 embed=discord.Embed(
                     description=f'The tag "{tag}" has been renamed to {new_tag_name} and restored.',
@@ -781,6 +864,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             tag,
             interaction.guild.id,
         )
+        self.logger.debug(tag_record)
 
         if tag_record:
             owner = await self.bot.try_user(tag_record["owner_id"])
@@ -844,6 +928,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 interaction.guild.id,
             )
 
+            self.logger.debug(tag_record)
+
             if tag_record:
                 if await self.check_permissions(tag_record["owner_id"], interaction):
                     if user.bot:
@@ -899,6 +985,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                 tag,
                 interaction.guild.id,
             )
+            self.logger.debug(tag_record)
 
             if tag_record:
                 try:
@@ -914,6 +1001,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                             ephemeral=silent,
                         )
                 except discord.NotFound:
+                    self.logger.info(
+                        f"Member is no longer in the server. Executing transfer..."
+                    )
                     await self.bot.database.execute(
                         "UPDATE tags SET owner_id = $1 WHERE name = $2",
                         interaction.user.id,
