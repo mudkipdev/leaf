@@ -1,5 +1,4 @@
 from bot import LeafBot
-import discord
 import tomllib
 
 

@@ -2,9 +2,8 @@ import logging
 
 from bot import LeafBot
 from utils import Paginator
-from discord.ext import commands
-from discord import app_commands
-import discord
+from disnake.ext import commands
+import disnake
 import asyncio
 import pytz
 from fuzzywuzzy import process
@@ -13,8 +12,7 @@ from typing import Optional, List
 
 
 # noinspection PyUnresolvedReferences,PyTypeChecker
-@app_commands.guild_only()
-class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
+class TagsCog(commands.Cog):
     def __init__(self, bot: LeafBot) -> None:
         self.bot = bot
         # Cache upu to 1000 items and automatically discard the least recently used items.
@@ -24,20 +22,833 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self.logger = logging.getLogger("leaf_logger")
 
     async def check_permissions(
-        self, tag_record: int, interaction: discord.Interaction
+        self, tag_record: int, interaction: disnake.GuildCommandInteraction
     ) -> bool:
         return (
             tag_record == interaction.user.id
-            or interaction.user.guild_permissions.manage_guild
+            or interaction.author.guild_permissions.manage_guild
             or await self.bot.is_owner(interaction.user)
         )
 
-    # Possible additional performance optimizations:
+    def is_tag_being_made(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+            self.logger.debug(f"Tag: {tags} is current reserved.")
+        except KeyError as e:
+            self.logger.critical("An error occurred in tag creation.", exc_info=e)
+            return False
+        else:
+            return name.lower() in being_made
+
+    def add_in_progress_tag(self, guild_id, name):
+        tags = self._reserved_tags_being_made.setdefault(guild_id, set())
+        tags.add(name.lower())
+        self.logger.debug(f"Tag: {tags} is being reserved.")
+
+    def remove_in_progress_tag(self, guild_id, name):
+        try:
+            being_made = self._reserved_tags_being_made[guild_id]
+        except KeyError:
+            self.logger.critical("An error occurred in tag removal.", exc_info=e)
+            return
+
+        being_made.discard(name.lower())
+        if not being_made:
+            del self._reserved_tags_being_made[guild_id]
+
+    @commands.slash_command(name="list")
+    async def list_tags(
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        user: Optional[disnake.Member] = None,
+        starting_page: int = 1,
+        silent: bool = False,
+    ) -> None:
+        """
+        Lists all the tags in the server.
+
+        Parameters
+        ----------
+        user: Optional filter for tags by a specific user.
+        starting_page: The page to start on.
+        silent: Whether the response should only be visible to you.
+        """
+
+        if user is not None:
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE ORDER BY name ASC"
+            tags = await self.bot.database.fetch(query, interaction.guild.id, user.id)
+
+        else:
+            query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE ORDER BY name ASC"
+            tags = await self.bot.database.fetch(query, interaction.guild.id)
+
+        self.logger.debug(tags)
+
+        embeds = []
+        if not tags:
+            embeds.append(
+                disnake.Embed(
+                    description=f"There are no tags in this server."
+                    if user is None
+                    else f"{user.name} does not have any tags in this server.",
+                    color=disnake.Color.dark_theme(),
+                )
+            )
+        else:
+            chunks = list(disnake.utils.as_chunks(tags, 15))
+            self.logger.info(f"Creating embed with {chunks} chunks.")
+            for index, chunk in enumerate(chunks):
+                embed = disnake.Embed(
+                    description="\n".join(
+                        [f"• **{tag['name']}** (Uses: {tag['uses']})" for tag in chunk]
+                    ),
+                    color=disnake.Color.dark_theme(),
+                )
+                embed.set_footer(text=f"Page {index + 1} / {len(chunks)}")
+                embeds.append(embed)
+
+        if not 0 <= (starting_page - 1) < len(embeds):
+            await interaction.response.send_message(
+                embed=disnake.Embed(
+                    description="That page does not exist.",
+                    color=disnake.Color.dark_theme(),
+                ),
+                ephemeral=silent,
+            )
+            return
+
+        if tags:
+            paginator = Paginator(
+                embeds=embeds, index=starting_page - 1, author=interaction.author
+            )
+            await paginator.start(interaction, ephemeral=silent)
+        else:
+            await interaction.response.send_message(embed=embeds[0])
+
+    @commands.slash_command(name="search")
+    async def search_tag(
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        silent: bool = False,
+    ) -> None:
+        """
+        Searches for the requested tag.
+
+        Parameters
+        ----------
+        tag: The name of the tag to search.
+        silent: Whether the response should only be visible to you.
+        """
+
+        tag_records = await self.bot.database.fetch(
+            "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
+            interaction.guild.id,
+        )
+
+        self.logger.debug(tag_records)
+
+        if tag_records:
+            tag_names = [tag_record["name"] for tag_record in tag_records]
+            matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)
+
+            self.logger.debug(
+                f"Discovered tag names: {tag_names}\n Possible matches: {matches}"
+            )
+
+            similar_tags = [
+                match[0] for match in matches if match[1] >= 85
+            ]  # Similarity threshold currently set to 85%.
+
+            self.logger.debug(f"Similar tags: {similar_tags}")
+
+            if similar_tags:
+                tag_records = await self.bot.database.fetch(
+                    "SELECT * FROM tags WHERE name = ANY($1::text[]) AND guild_id = $2 AND deleted = FALSE",
+                    tuple(similar_tags),
+                    interaction.guild.id,
+                )
+                self.logger.debug(tag_records)
+
+                for tag_record in tag_records:
+                    embed = disnake.Embed(
+                        description="\n".join(
+                            [
+                                f"• **{tag_record['name']}**"
+                                for tag_record in tag_records
+                            ]
+                        ),
+                        color=disnake.Color.dark_theme(),
+                    )
+                await interaction.response.send_message(embed=embed, ephemeral=silent)
+            else:
+                await interaction.response.send_message(
+                    f"No similar tags found for '{tag}'.", ephemeral=silent
+                )
+        else:
+            await interaction.response.send_message(
+                f"No tags found for '{tag}'.", ephemeral=silent
+            )
+
+    @commands.slash_command(name="view")
+    async def view_tag(
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        raw: bool = False,
+        silent: bool = False,
+    ) -> None:
+        """
+        Sends the content of a tag.
+
+        Parameters
+        ----------
+        tag: The name of the tag to view.
+        raw: Whether the Markdown in this tag should be escaped or not.
+        silent: Whether the response should only be visible to you.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE",
+                tag,
+                interaction.guild.id,
+            )
+            self.logger.debug(tag_record)
+
+            if tag_record:
+                embed = disnake.Embed(
+                    title=tag_record["name"],
+                    description=tag_record["content"],
+                    color=disnake.Color.dark_theme(),
+                )
+                if raw:
+                    embed.description = disnake.utils.escape_markdown(
+                        tag_record["content"]
+                    )
+                await interaction.response.send_message(embed=embed, ephemeral=silent)
+                await self.bot.database.execute(
+                    "UPDATE tags SET uses = $1 WHERE name = $2 and guild_id = $3;",
+                    tag_record["uses"] + 1,
+                    tag,
+                    interaction.guild.id,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag does not exist.",
+                        color=disnake.Color.dark_theme(),
+                    ),
+                    ephemeral=silent,
+                )
+
+    @commands.slash_command(name="create")
+    async def create_tag(self, interaction: disnake.GuildCommandInteraction, name: str) -> None:
+        """
+        Creates a new tag.
+
+        Parameters
+        ----------
+        name: The tag of the newly created tag.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                name,
+                interaction.guild.id,
+            )
+            self.logger.debug(tag_record)
+
+            if not tag_record and not self.is_tag_being_made(
+                interaction.guild.id, name
+            ):
+                self.add_in_progress_tag(interaction.guild.id, name)
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="Please reply to this message with your tag content within 5 minutes.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                message = await interaction.original_response()
+
+                def check(message):
+                    return (
+                        message.channel == interaction.channel
+                        and message.author == interaction.user
+                    )
+
+                try:
+                    message = await self.bot.wait_for(
+                        "message", timeout=300, check=check
+                    )
+                except asyncio.TimeoutError as e:
+                    self.logger.info("Command timeout:", exc_info=e)
+                    await interaction.channel.send(
+                        interaction.user.mention,
+                        embed=disnake.Embed(
+                            description="You took too long to provide the tag content.",
+                            color=disnake.Color.dark_theme(),
+                        ),
+                    )
+                    return
+
+                await self.bot.database.execute(
+                    """
+                    INSERT INTO tags(name, guild_id, owner_id, content, created_at, last_edited_at, uses)
+                    VALUES ($1, $2, $3, $4, DEFAULT, DEFAULT, DEFAULT);
+                    """,
+                    name,
+                    interaction.guild.id,
+                    interaction.user.id,
+                    message.content,
+                )
+                self.remove_in_progress_tag(interaction.guild.id, name)
+                await message.reply(
+                    embed=disnake.Embed(
+                        description="The tag has successfully been created.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag already exists.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+
+    @commands.slash_command(name="rename")
+    async def rename_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, new_name: str
+    ) -> None:
+        """
+        Changes the name of a tag.
+        
+        Parameters
+        ----------
+        tag: The name of the tag to rename.
+        new_name: The new name of the tag.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+
+            self.logger.debug(tag_record)
+
+            if not tag_record:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag does not exist.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                return
+
+            if await self.check_permissions(tag_record["owner_id"], interaction):
+                new_name_tag_record = await self.bot.database.fetchrow(
+                    "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                    tag,
+                    interaction.guild.id,
+                )
+                self.logger.debug(new_name_tag_record)
+
+                if new_name_tag_record and self.is_tag_being_made(
+                    interaction.guild.id, new_name
+                ):
+                    await interaction.response.send_message(
+                        embed=disnake.Embed(
+                            description=f"A tag named {new_name} already exists.",
+                            color=disnake.Color.dark_theme(),
+                        )
+                    )
+                    return
+
+                self.add_in_progress_tag(interaction.guild.id, new_name)
+
+                await self.bot.database.execute(
+                    "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
+                    new_name,
+                    tag,
+                    interaction.guild.id,
+                )
+                self.remove_in_progress_tag(interaction.guild.id, new_name)
+
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="The tag has successfully been renamed.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="You do not have permission to rename that tag.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+
+    @commands.slash_command(name="edit")
+    async def edit_tag(self, interaction: disnake.GuildCommandInteraction, tag: str) -> None:
+        """
+        Edits the content of a tag.
+
+        Parameters
+        ----------
+        tag: The name of the tag to edit.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+            self.logger.debug(tag_record)
+
+            if not tag_record:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag does not exist.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                return
+
+            if await self.check_permissions(tag_record["owner_id"], interaction):
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="Please reply to this message with your new tag content within 5 minutes.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                message = await interaction.original_response()
+
+                self.logger.debug(message)
+
+                def check(message):
+                    return (
+                        message.channel == interaction.channel
+                        and message.author == interaction.user
+                    )
+
+                try:
+                    message = await self.bot.wait_for(
+                        "message", timeout=300, check=check
+                    )
+                except asyncio.TimeoutError as e:
+                    self.logger.info("Command timeout:", exc_info=e)
+                    await interaction.channel.send(
+                        interaction.user.mention,
+                        embed=disnake.Embed(
+                            description="You took too long to provide the new tag content.",
+                            color=disnake.Color.dark_theme(),
+                        ),
+                    )
+                    return
+
+                await self.bot.database.execute(
+                    "UPDATE tags SET content = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
+                    message.content,
+                    tag,
+                    interaction.guild.id,
+                )
+
+                await message.reply(
+                    embed=disnake.Embed(
+                        description="The tag has successfully been edited.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="You do not have permission to edit that tag.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+
+    @commands.slash_command(name="delete")
+    async def delete_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+    ) -> None:
+        """
+        Deletes a tag from the server.
+        
+        Parameters
+        ----------
+        tag: The name of the tag to delete.
+        silent: Whether the response should only be visible to you.
+        """
+        
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+            self.logger.debug(tag_record)
+
+            if not tag_record:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag does not exist.",
+                        color=disnake.Color.dark_theme(),
+                    ),
+                    ephemeral=silent,
+                )
+                return
+
+            # Check for tags with the same name and guild_id that have already been deleted.
+            duplicate_tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
+                tag,
+                interaction.guild.id,
+            )
+
+            self.logger.debug(duplicate_tag_record)
+
+            # Hard delete if there is a duplicate. Otherwise, we would need to rethink the DB structure
+            if duplicate_tag_record:
+                await self.bot.database.execute(
+                    "DELETE FROM Tags WHERE name = $1 AND guild_id = $2;",
+                    tag,
+                    interaction.guild.id,
+                )
+
+            if await self.check_permissions(tag_record["owner_id"], interaction):
+                await self.bot.database.execute(
+                    "UPDATE Tags SET deleted = true WHERE name = $1;", tag
+                )
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="The tag has successfully been deleted.",
+                        color=disnake.Color.dark_theme(),
+                    ),
+                    ephemeral=silent,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="You do not have permission to delete that tag.",
+                        color=disnake.Color.dark_theme(),
+                    ),
+                    ephemeral=silent,
+                )
+
+    @commands.slash_command(name="restore")
+    @commands.has_permissions(manage_guild=True)
+    async def restore_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+    ) -> None:
+        """
+        Recovers a previously deleted tag.
+
+        Parameters
+        ----------
+        tag: The deleted tag that you wish to restore.
+        silent: Whether the response should only be visible to you.
+        """
+
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
+            tag,
+            interaction.guild.id,
+        )
+        self.logger.debug(tag_record)
+
+        if not tag_record:
+            await interaction.response.send_message(
+                embed=disnake.Embed(
+                    description="That tag does not exist.",
+                    color=disnake.Color.dark_theme(),
+                ),
+                ephemeral=silent,
+            )
+            return
+
+        # Check for duplicate tag names
+        duplicate_tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag,
+            interaction.guild.id,
+        )
+        self.logger.debug(duplicate_tag_record)
+
+        if duplicate_tag_record:
+            await interaction.response.send_message(
+                embed=disnake.Embed(
+                    description="A non-deleted tag with that name already exists. Please reply with the new name for the tag.",
+                    color=disnake.Color.dark_theme(),
+                ),
+                ephemeral=silent,
+            )
+
+            def check(message):
+                return (
+                    message.channel == interaction.channel
+                    and message.author == interaction.user
+                )
+
+            try:
+                message = await self.bot.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError as e:
+                self.logger.info("Timeout Error:", exc_info=e)
+                await interaction.followup.send("You took too long to respond.")
+                return
+
+            new_tag_name = message.content
+
+            if not new_tag_name:
+                await message.reply(
+                    embed=disnake.Embed(
+                        description="Invalid tag name. Please try again.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                return
+            elif self.is_tag_being_made(interaction.guild_id, new_tag_name):
+                await message.reply(
+                    embed=disnake.Embed(
+                        description="That tag name is already taken. Please try again.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+                return
+            elif await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                new_tag_name,
+                interaction.guild.id,
+            ):
+                await message.reply(
+                    embed=disnake.Embed(
+                        description="That tag name is already taken. Please try again.",
+                        color=disnake.Color.dark_theme(),
+                    ),
+                )
+                return
+            # Add the tag to in progress list so it cant be used in other commands.
+            self.add_in_progress_tag(interaction.guild_id, new_tag_name)
+            await self.bot.database.execute(
+                "UPDATE tags SET name = $1, deleted = FALSE WHERE name = $2 AND guild_id = $3 AND deleted = TRUE",
+                new_tag_name,
+                tag,
+                interaction.guild.id,
+            )
+            # Remove tag after DB is finished
+            self.remove_in_progress_tag(interaction.guild_id, new_tag_name)
+            await message.reply(
+                embed=disnake.Embed(
+                    description=f'The tag "{tag}" has been renamed to {new_tag_name} and restored.',
+                    color=disnake.Color.dark_theme(),
+                ),
+            )
+        else:
+            await self.bot.database.execute(
+                "UPDATE tags SET deleted = FALSE WHERE name = $1 AND guild_id = $2",
+                tag,
+                interaction.guild.id,
+            )
+            await interaction.response.send_message(
+                embed=disnake.Embed(
+                    description=f'The tag "{tag}" has been restored.',
+                    color=disnake.Color.dark_theme(),
+                ),
+                ephemeral=silent,
+            )
+
+    @commands.slash_command(name="info")
+    async def tag_info(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+    ) -> None:
+        """
+        Sends the info and stats of a tag.
+
+        Parameters
+        ----------
+        tag: The tag to view info for.
+        silent: Whether the response should only be visible to you.
+        """
+        
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag,
+            interaction.guild.id,
+        )
+        self.logger.debug(tag_record)
+
+        if tag_record:
+            owner = await self.bot.try_user(tag_record["owner_id"])
+            embed = disnake.Embed(
+                title=f"Info for tag \"{tag_record['name']}\"",
+                color=disnake.Color.dark_theme(),
+            )
+            embed.add_field(name="Owner", value=owner.mention)
+            embed.add_field(
+                name="Created At",
+                value=disnake.utils.format_dt(
+                    pytz.UTC.localize(tag_record["created_at"], "D")
+                ),
+                inline=False,
+            )
+            if tag_record["last_edited_at"] != tag_record["created_at"]:
+                embed.add_field(
+                    name="Updated At",
+                    value=disnake.utils.format_dt(
+                        pytz.UTC.localize(tag_record["last_edited_at"], "D")
+                    ),
+                    inline=False,
+                )
+            embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
+            embed.set_thumbnail(url=owner.avatar.url)
+
+            await interaction.response.send_message(embed=embed, ephemeral=silent)
+        else:
+            await interaction.response.send_message(
+                embed=disnake.Embed(
+                    description="That tag does not exist.",
+                    color=disnake.Color.dark_theme(),
+                ),
+                ephemeral=silent,
+            )
+
+    @commands.slash_command(name="transfer")
+    async def transfer_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, user: disnake.Member
+    ) -> None:
+        """
+        Transfers a tag to a different owner.
+
+        Parameters
+        ----------
+        tag: The tag to transfer to the new user.
+        user: The user to transfer the tag to.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+
+            self.logger.debug(tag_record)
+
+            if tag_record:
+                if await self.check_permissions(tag_record["owner_id"], interaction):
+                    if user.bot:
+                        await interaction.response.send_message(
+                            embed=disnake.Embed(
+                                description="You cannot transfer tags to bots.",
+                                color=disnake.Color.dark_theme(),
+                            )
+                        )
+                        return
+
+                    await self.bot.database.execute(
+                        "UPDATE tags SET owner_id = $1 WHERE name = $2 AND guild_id = $3",
+                        user.id,
+                        tag,
+                        interaction.guild.id,
+                    )
+                    await interaction.response.send_message(
+                        user.mention,
+                        embed=disnake.Embed(
+                            description=f"The tag has successfully been transferred to {user.mention}.",
+                            color=disnake.Color.dark_theme(),
+                        ),
+                    )
+                else:
+                    await interaction.response.send_message(
+                        embed=disnake.Embed(
+                            description="You do not have permission to edit that tag.",
+                            color=disnake.Color.dark_theme(),
+                        )
+                    )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description="That tag does not exist.",
+                        color=disnake.Color.dark_theme(),
+                    )
+                )
+
+    @commands.slash_command(name="claim")
+    async def claim_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+    ) -> None:
+        """
+        Claims an unclaimed tag. An unclaimed tag is a tag with no owner because they have left the server.
+
+        Parameters
+        ----------
+        tag: The tag you wish to claim.
+        """
+
+        async with self.bot.database.transaction():
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+                tag,
+                interaction.guild.id,
+            )
+            self.logger.debug(tag_record)
+
+            if tag_record:
+                try:
+                    member = await self.bot.try_member(
+                        tag_record["owner_id"], guild=interaction.guild
+                    )
+                    if member is not None:
+                        await interaction.response.send_message(
+                            embed=disnake.Embed(
+                                description=f'The owner of the tag "{tag}" is still present in the server.',
+                                color=disnake.Color.dark_theme(),
+                            ),
+                            ephemeral=silent,
+                        )
+                except disnake.NotFound:
+                    self.logger.info(
+                        f"Member is no longer in the server. Executing transfer..."
+                    )
+                    await self.bot.database.execute(
+                        "UPDATE tags SET owner_id = $1 WHERE name = $2",
+                        interaction.user.id,
+                        tag,
+                    )
+
+                    await interaction.response.send_message(
+                        embed=disnake.Embed(
+                            description=f'The tag "{tag}" has successfully been claimed by {interaction.user}.',
+                            color=disnake.Color.dark_theme(),
+                        ),
+                        ephemeral=silent,
+                    )
+            else:
+                await interaction.response.send_message(
+                    embed=disnake.Embed(
+                        description=f'A tag named "{tag}" does not exist',
+                        color=disnake.Color.dark_theme(),
+                    ),
+                    ephemeral=silent,
+                )
+    
+        # Possible additional performance optimizations:
     # 1) Paginate records into batches and fetch them in chunks of 50.
     # 2) Timeout for database queries.
+    @view_tag.autocomplete("tag")
+    @rename_tag.autocomplete("tag")
+    @edit_tag.autocomplete("tag")
+    @delete_tag.autocomplete("tag")
+    @tag_info.autocomplete("tag")
+    @transfer_tag.autocomplete("tag")
+    @claim_tag.autocomplete("tag")
     async def tag_autocomplete(
-        self, interaction: discord.Interaction, current: str
-    ) -> List[app_commands.Choice[str]]:
+        self, interaction: disnake.GuildCommandInteraction, current: str
+    ) -> str:
         # Check if the autocomplete results are already in the cache
         cache_key = f"{interaction.guild.id}:{current.lower()}"
 
@@ -73,769 +884,10 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
             self.logger.debug(self.autocomplete_cache)
 
         return [
-            app_commands.Choice(name=tag["name"], value=tag["name"])
+            tag["name"]
             for tag in tag_records
-        ]
+        ] # type: ignore
 
-    def is_tag_being_made(self, guild_id, name):
-        try:
-            being_made = self._reserved_tags_being_made[guild_id]
-            self.logger.debug(f"Tag: {tags} is current reserved.")
-        except KeyError as e:
-            self.logger.critical("An error occurred in tag creation.", exc_info=e)
-            return False
-        else:
-            return name.lower() in being_made
 
-    def add_in_progress_tag(self, guild_id, name):
-        tags = self._reserved_tags_being_made.setdefault(guild_id, set())
-        tags.add(name.lower())
-        self.logger.debug(f"Tag: {tags} is being reserved.")
-
-    def remove_in_progress_tag(self, guild_id, name):
-        try:
-            being_made = self._reserved_tags_being_made[guild_id]
-        except KeyError:
-            self.logger.critical("An error occurred in tag removal.", exc_info=e)
-            return
-
-        being_made.discard(name.lower())
-        if not being_made:
-            del self._reserved_tags_being_made[guild_id]
-
-    @app_commands.describe(
-        user="Optional filter for tags by a specific user.",
-        starting_page="The page to start on.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(name="list", description="Lists all the tags in the server.")
-    async def list_tags(
-        self,
-        interaction: discord.Interaction,
-        user: Optional[discord.Member] = None,
-        starting_page: Optional[int] = 1,
-        silent: Optional[bool] = False,
-    ) -> None:
-        if user is not None:
-            query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE ORDER BY name ASC"
-            tags = await self.bot.database.fetch(query, interaction.guild.id, user.id)
-
-        else:
-            query = "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE ORDER BY name ASC"
-            tags = await self.bot.database.fetch(query, interaction.guild.id)
-
-        self.logger.debug(tags)
-
-        embeds = []
-        if not tags:
-            embeds.append(
-                discord.Embed(
-                    description=f"There are no tags in this server."
-                    if user is None
-                    else f"{user.name} does not have any tags in this server.",
-                    color=discord.Color.dark_embed(),
-                )
-            )
-        else:
-            chunks = list(discord.utils.as_chunks(tags, 15))
-            self.logger.info(f"Creating embed with {chunks} chunks.")
-            for index, chunk in enumerate(chunks):
-                embed = discord.Embed(
-                    description="\n".join(
-                        [f"• **{tag['name']}** (Uses: {tag['uses']})" for tag in chunk]
-                    ),
-                    color=discord.Color.dark_embed(),
-                )
-                embed.set_footer(text=f"Page {index + 1} / {len(chunks)}")
-                embeds.append(embed)
-
-        if not 0 <= (starting_page - 1) < len(embeds):
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="That page does not exist.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
-            )
-            return
-
-        if tags:
-            paginator = Paginator(
-                embeds=embeds, index=starting_page - 1, author=interaction.user
-            )
-            await paginator.start(interaction, ephemeral=silent)
-        else:
-            await interaction.response.send_message(embed=embeds[0])
-
-    @app_commands.describe(
-        tag="The name of the tag to search.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(name="search", description="Searches for the requested tag.")
-    async def search_tag(
-        self,
-        interaction: discord.Interaction,
-        tag: str,
-        silent: Optional[bool] = False,
-    ) -> None:
-        tag_records = await self.bot.database.fetch(
-            "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
-            interaction.guild.id,
-        )
-
-        self.logger.debug(tag_records)
-
-        if tag_records:
-            tag_names = [tag_record["name"] for tag_record in tag_records]
-            matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)
-
-            self.logger.debug(
-                f"Discovered tag names: {tag_names}\n Possible matches: {matches}"
-            )
-
-            similar_tags = [
-                match[0] for match in matches if match[1] >= 85
-            ]  # Similarity threshold currently set to 85%.
-
-            self.logger.debug(f"Similar tags: {similar_tags}")
-
-            if similar_tags:
-                tag_records = await self.bot.database.fetch(
-                    "SELECT * FROM tags WHERE name = ANY($1::text[]) AND guild_id = $2 AND deleted = FALSE",
-                    tuple(similar_tags),
-                    interaction.guild.id,
-                )
-                self.logger.debug(tag_records)
-
-                for tag_record in tag_records:
-                    embed = discord.Embed(
-                        description="\n".join(
-                            [
-                                f"• **{tag_record['name']}**"
-                                for tag_record in tag_records
-                            ]
-                        ),
-                        color=discord.Color.dark_embed(),
-                    )
-                await interaction.response.send_message(embed=embed, ephemeral=silent)
-            else:
-                await interaction.response.send_message(
-                    f"No similar tags found for '{tag}'.", ephemeral=silent
-                )
-        else:
-            await interaction.response.send_message(
-                f"No tags found for '{tag}'.", ephemeral=silent
-            )
-
-    @app_commands.describe(
-        tag="The name of the tag to view.",
-        raw="Whether the Markdown in this tag should be escaped or not.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(name="view", description="Sends the content of a tag.")
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def view_tag(
-        self,
-        interaction: discord.Interaction,
-        tag: str,
-        raw: Optional[bool] = False,
-        silent: Optional[bool] = False,
-    ) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE",
-                tag,
-                interaction.guild.id,
-            )
-            self.logger.debug(tag_record)
-
-            if tag_record:
-                embed = discord.Embed(
-                    title=tag_record["name"],
-                    description=tag_record["content"],
-                    color=discord.Color.dark_embed(),
-                )
-                if raw:
-                    embed.description = discord.utils.escape_markdown(
-                        tag_record["content"]
-                    )
-                await interaction.response.send_message(embed=embed, ephemeral=silent)
-                await self.bot.database.execute(
-                    "UPDATE tags SET uses = $1 WHERE name = $2 and guild_id = $3;",
-                    tag_record["uses"] + 1,
-                    tag,
-                    interaction.guild.id,
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag does not exist.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
-
-    @app_commands.describe(name="The tag of the newly created tag.")
-    @app_commands.command(name="create", description="Creates a new tag.")
-    async def create_tag(self, interaction: discord.Interaction, name: str) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                name,
-                interaction.guild.id,
-            )
-            self.logger.debug(tag_record)
-
-            if not tag_record and not self.is_tag_being_made(
-                interaction.guild.id, name
-            ):
-                self.add_in_progress_tag(interaction.guild.id, name)
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="Please reply to this message with your tag content within 5 minutes.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                message = await interaction.original_response()
-
-                def check(message):
-                    return (
-                        message.channel == interaction.channel
-                        and message.author == interaction.user
-                    )
-
-                try:
-                    message = await self.bot.wait_for(
-                        "message", timeout=300, check=check
-                    )
-                except asyncio.TimeoutError as e:
-                    self.logger.info("Command timeout:", exc_info=e)
-                    await interaction.channel.send(
-                        interaction.user.mention,
-                        embed=discord.Embed(
-                            description="You took too long to provide the tag content.",
-                            color=discord.Color.dark_embed(),
-                        ),
-                    )
-                    return
-
-                await self.bot.database.execute(
-                    """
-                    INSERT INTO tags(name, guild_id, owner_id, content, created_at, last_edited_at, uses)
-                    VALUES ($1, $2, $3, $4, DEFAULT, DEFAULT, DEFAULT);
-                    """,
-                    name,
-                    interaction.guild.id,
-                    interaction.user.id,
-                    message.content,
-                )
-                self.remove_in_progress_tag(interaction.guild.id, name)
-                await message.reply(
-                    embed=discord.Embed(
-                        description="The tag has successfully been created.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag already exists.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-
-    @app_commands.describe(
-        tag="The name of the tag to rename.", new_name="The new name of the tag."
-    )
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    @app_commands.command(name="rename", description="Changes the name of a tag.")
-    async def rename_tag(
-        self, interaction: discord.Interaction, tag: str, new_name: str
-    ) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                tag,
-                interaction.guild.id,
-            )
-
-            self.logger.debug(tag_record)
-
-            if not tag_record:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag does not exist.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                return
-
-            if await self.check_permissions(tag_record["owner_id"], interaction):
-                new_name_tag_record = await self.bot.database.fetchrow(
-                    "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                    tag,
-                    interaction.guild.id,
-                )
-                self.logger.debug(new_name_tag_record)
-
-                if new_name_tag_record and self.is_tag_being_made(
-                    interaction.guild.id, new_name
-                ):
-                    await interaction.response.send_message(
-                        embed=discord.Embed(
-                            description=f"A tag named {new_name} already exists.",
-                            color=discord.Color.dark_embed(),
-                        )
-                    )
-                    return
-
-                self.add_in_progress_tag(interaction.guild.id, new_name)
-
-                await self.bot.database.execute(
-                    "UPDATE tags SET name = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
-                    new_name,
-                    tag,
-                    interaction.guild.id,
-                )
-                self.remove_in_progress_tag(interaction.guild.id, new_name)
-
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="The tag has successfully been renamed.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="You do not have permission to rename that tag.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-
-    @app_commands.describe(tag="The name of the tag to edit.")
-    @app_commands.command(name="edit", description="Edits the content of a tag.")
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def edit_tag(self, interaction: discord.Interaction, tag: str) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                tag,
-                interaction.guild.id,
-            )
-            self.logger.debug(tag_record)
-
-            if not tag_record:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag does not exist.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                return
-
-            if await self.check_permissions(tag_record["owner_id"], interaction):
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="Please reply to this message with your new tag content within 5 minutes.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                message = await interaction.original_response()
-
-                self.logger.debug(message)
-
-                def check(message):
-                    return (
-                        message.channel == interaction.channel
-                        and message.author == interaction.user
-                    )
-
-                try:
-                    message = await self.bot.wait_for(
-                        "message", timeout=300, check=check
-                    )
-                except asyncio.TimeoutError as e:
-                    self.logger.info("Command timeout:", exc_info=e)
-                    await interaction.channel.send(
-                        interaction.user.mention,
-                        embed=discord.Embed(
-                            description="You took too long to provide the new tag content.",
-                            color=discord.Color.dark_embed(),
-                        ),
-                    )
-                    return
-
-                await self.bot.database.execute(
-                    "UPDATE tags SET content = $1, last_edited_at = NOW() AT TIME ZONE 'utc' WHERE name = $2 and guild_id = $3;",
-                    message.content,
-                    tag,
-                    interaction.guild.id,
-                )
-
-                await message.reply(
-                    embed=discord.Embed(
-                        description="The tag has successfully been edited.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="You do not have permission to edit that tag.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-
-    @app_commands.describe(
-        tag="The name of the tag to delete.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(name="delete", description="Deletes a tag from the server.")
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def delete_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
-    ) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                tag,
-                interaction.guild.id,
-            )
-            self.logger.debug(tag_record)
-
-            if not tag_record:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag does not exist.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
-                return
-
-            # Check for tags with the same name and guild_id that have already been deleted.
-            duplicate_tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
-                tag,
-                interaction.guild.id,
-            )
-
-            self.logger.debug(duplicate_tag_record)
-
-            # Hard delete if there is a duplicate. Otherwise, we would need to rethink the DB structure
-            if duplicate_tag_record:
-                await self.bot.database.execute(
-                    "DELETE FROM Tags WHERE name = $1 AND guild_id = $2;",
-                    tag,
-                    interaction.guild.id,
-                )
-
-            if await self.check_permissions(tag_record["owner_id"], interaction):
-                await self.bot.database.execute(
-                    "UPDATE Tags SET deleted = true WHERE name = $1;", tag
-                )
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="The tag has successfully been deleted.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="You do not have permission to delete that tag.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
-
-    @app_commands.describe(
-        tag="The deleted tag that you wish to restore.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(
-        name="restore", description="Recovers a previously deleted tag."
-    )
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def restore_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
-    ) -> None:
-        tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
-            tag,
-            interaction.guild.id,
-        )
-        self.logger.debug(tag_record)
-
-        if not tag_record:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
-            )
-            return
-
-        # Check for duplicate tag names
-        duplicate_tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-            tag,
-            interaction.guild.id,
-        )
-        self.logger.debug(duplicate_tag_record)
-
-        if duplicate_tag_record:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="A non-deleted tag with that name already exists. Please reply with the new name for the tag.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
-            )
-
-            def check(message):
-                return (
-                    message.channel == interaction.channel
-                    and message.author == interaction.user
-                )
-
-            try:
-                message = await self.bot.wait_for("message", timeout=300, check=check)
-            except asyncio.TimeoutError as e:
-                self.logger.info("Timeout Error:", exc_info=e)
-                await interaction.followup.send("You took too long to respond.")
-                return
-
-            new_tag_name = message.content
-
-            if not new_tag_name:
-                await message.reply(
-                    embed=discord.Embed(
-                        description="Invalid tag name. Please try again.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                return
-            elif self.is_tag_being_made(interaction.guild_id, new_tag_name):
-                await message.reply(
-                    embed=discord.Embed(
-                        description="That tag name is already taken. Please try again.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                return
-            elif await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                new_tag_name,
-                interaction.guild.id,
-            ):
-                await message.reply(
-                    embed=discord.Embed(
-                        description="That tag name is already taken. Please try again.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                )
-                return
-            # Add the tag to in progress list so it cant be used in other commands.
-            self.add_in_progress_tag(interaction.guild_id, new_tag_name)
-            await self.bot.database.execute(
-                "UPDATE tags SET name = $1, deleted = FALSE WHERE name = $2 AND guild_id = $3 AND deleted = TRUE",
-                new_tag_name,
-                tag,
-                interaction.guild.id,
-            )
-            # Remove tag after DB is finished
-            self.remove_in_progress_tag(interaction.guild_id, new_tag_name)
-            await message.reply(
-                embed=discord.Embed(
-                    description=f'The tag "{tag}" has been renamed to {new_tag_name} and restored.',
-                    color=discord.Color.dark_embed(),
-                ),
-            )
-        else:
-            await self.bot.database.execute(
-                "UPDATE tags SET deleted = FALSE WHERE name = $1 AND guild_id = $2",
-                tag,
-                interaction.guild.id,
-            )
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description=f'The tag "{tag}" has been restored.',
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
-            )
-
-    @app_commands.describe(
-        tag="The tag to view info for.",
-        silent="Whether the response should only be visible to you.",
-    )
-    @app_commands.command(name="info", description="Sends the info and stats of a tag.")
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def tag_info(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
-    ) -> None:
-        tag_record = await self.bot.database.fetchrow(
-            "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-            tag,
-            interaction.guild.id,
-        )
-        self.logger.debug(tag_record)
-
-        if tag_record:
-            owner = await self.bot.try_user(tag_record["owner_id"])
-            embed = discord.Embed(
-                title=f"Info for tag \"{tag_record['name']}\"",
-                color=discord.Color.dark_embed(),
-            )
-            embed.add_field(name="Owner", value=owner.mention)
-            embed.add_field(
-                name="Created At",
-                value=discord.utils.format_dt(
-                    pytz.UTC.localize(tag_record["created_at"], "D")
-                ),
-                inline=False,
-            )
-            if tag_record["last_edited_at"] != tag_record["created_at"]:
-                embed.add_field(
-                    name="Updated At",
-                    value=discord.utils.format_dt(
-                        pytz.UTC.localize(tag_record["last_edited_at"], "D")
-                    ),
-                    inline=False,
-                )
-            embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
-            embed.set_thumbnail(url=owner.avatar.url)
-
-            await interaction.response.send_message(embed=embed, ephemeral=silent)
-        else:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="That tag does not exist.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=silent,
-            )
-
-    @app_commands.describe(
-        tag="The tag to transfer to the new user.",
-        user="The user to transfer the tag to.",
-    )
-    @app_commands.command(
-        name="transfer", description="Transfers a tag to a different owner."
-    )
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def transfer_tag(
-        self, interaction: discord.Interaction, tag: str, user: discord.Member
-    ) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                tag,
-                interaction.guild.id,
-            )
-
-            self.logger.debug(tag_record)
-
-            if tag_record:
-                if await self.check_permissions(tag_record["owner_id"], interaction):
-                    if user.bot:
-                        await interaction.response.send_message(
-                            embed=discord.Embed(
-                                description="You cannot transfer tags to bots.",
-                                color=discord.Color.dark_embed(),
-                            )
-                        )
-                        return
-
-                    await self.bot.database.execute(
-                        "UPDATE tags SET owner_id = $1 WHERE name = $2 AND guild_id = $3",
-                        user.id,
-                        tag,
-                        interaction.guild.id,
-                    )
-                    await interaction.response.send_message(
-                        user.mention,
-                        embed=discord.Embed(
-                            description=f"The tag has successfully been transferred to {user.mention}.",
-                            color=discord.Color.dark_embed(),
-                        ),
-                    )
-                else:
-                    await interaction.response.send_message(
-                        embed=discord.Embed(
-                            description="You do not have permission to edit that tag.",
-                            color=discord.Color.dark_embed(),
-                        )
-                    )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="That tag does not exist.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-
-    @app_commands.describe(tag="The tag you wish to claim.")
-    @app_commands.command(
-        name="claim",
-        description="Claims an unclaimed tag. An unclaimed tag is a tag with no owner "
-        "because they have left the server.",
-    )
-    @app_commands.autocomplete(tag=tag_autocomplete)
-    async def claim_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
-    ) -> None:
-        async with self.bot.database.transaction():
-            tag_record = await self.bot.database.fetchrow(
-                "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
-                tag,
-                interaction.guild.id,
-            )
-            self.logger.debug(tag_record)
-
-            if tag_record:
-                try:
-                    member = await self.bot.try_member(
-                        tag_record["owner_id"], guild=interaction.guild
-                    )
-                    if member is not None:
-                        await interaction.response.send_message(
-                            embed=discord.Embed(
-                                description=f'The owner of the tag "{tag}" is still present in the server.',
-                                color=discord.Color.dark_embed(),
-                            ),
-                            ephemeral=silent,
-                        )
-                except discord.NotFound:
-                    self.logger.info(
-                        f"Member is no longer in the server. Executing transfer..."
-                    )
-                    await self.bot.database.execute(
-                        "UPDATE tags SET owner_id = $1 WHERE name = $2",
-                        interaction.user.id,
-                        tag,
-                    )
-
-                    await interaction.response.send_message(
-                        embed=discord.Embed(
-                            description=f'The tag "{tag}" has successfully been claimed by {interaction.user}.',
-                            color=discord.Color.dark_embed(),
-                        ),
-                        ephemeral=silent,
-                    )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description=f'A tag named "{tag}" does not exist',
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
-
-
-async def setup(bot: LeafBot) -> None:
-    await bot.add_cog(TagsCog(bot))
+def setup(bot: LeafBot) -> None:
+    bot.add_cog(TagsCog(bot))

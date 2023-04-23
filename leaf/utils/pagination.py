@@ -1,5 +1,7 @@
-from discord.ext import commands
-import discord
+from __future__ import annotations
+
+from disnake.ext import commands
+import disnake
 import asyncio
 
 from typing import Optional, List
@@ -10,10 +12,10 @@ __all__ = ("Paginator",)
 class Paginator:
     def __init__(
         self,
-        embeds: List[discord.Embed],
+        embeds: List[disnake.Embed],
         *,
         index: int = 0,
-        author: Optional[discord.User] = None
+        author: Optional[disnake.Member] = None
     ) -> None:
         self.embeds = embeds
         self.index = index
@@ -22,46 +24,46 @@ class Paginator:
 
     async def start(
         self,
-        messageable: discord.abc.Messageable | discord.Interaction,
+        messageable: disnake.abc.Messageable | disnake.Interaction,
         *args,
         **kwargs
     ) -> None:
         kwargs["embed"] = self.embeds[self.index]
         kwargs["view"] = self.paginated_view
 
-        if isinstance(messageable, discord.Interaction):
+        if isinstance(messageable, disnake.Interaction):
             await messageable.response.send_message(*args, **kwargs)
-        elif isinstance(messageable, discord.abc.Messageable):
+        elif isinstance(messageable, disnake.abc.Messageable):
             await messageable.send(*args, **kwargs)
 
         self.paginated_view.set_index(self.index)
 
 
-class PaginatedView(discord.ui.View):
+class PaginatedView(disnake.ui.View):
     def __init__(
-        self, embeds: List[discord.Embed], *, author: Optional[discord.User] = None
+        self, embeds: List[disnake.Embed], *, author: Optional[disnake.Member] = None
     ) -> None:
         super().__init__(timeout=None)
         self.embeds = embeds
         self.index = 0
         self.author = author
 
-    @discord.ui.button(custom_id="previous", emoji="◀")
+    @disnake.ui.button(custom_id="previous", emoji="◀")
     async def previous(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
     ) -> None:
         self.set_index(self.index - 1)
         await self.update(interaction)
 
-    @discord.ui.button(custom_id="page", emoji="🔢")
+    @disnake.ui.button(custom_id="page", emoji="🔢")
     async def page(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
     ) -> None:
         if self.author and interaction.user != self.author:
             await interaction.response.send_message(
-                embed=discord.Embed(
+                embed=disnake.Embed(
                     description="You do not have permission to interact with this menu.",
-                    color=discord.Color.dark_embed(),
+                    color=disnake.Color.dark_theme(),
                 ),
                 ephemeral=True,
             )
@@ -69,19 +71,19 @@ class PaginatedView(discord.ui.View):
 
         await interaction.response.send_modal(PageModal(self))
 
-    @discord.ui.button(custom_id="next", emoji="▶")
+    @disnake.ui.button(custom_id="next", emoji="▶")
     async def next(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
     ) -> None:
         self.set_index(self.index + 1)
         await self.update(interaction)
 
-    async def update(self, interaction: discord.Interaction) -> None:
+    async def update(self, interaction: disnake.Interaction) -> None:
         if self.author and interaction.user != self.author:
             await interaction.response.send_message(
-                embed=discord.Embed(
+                embed=disnake.Embed(
                     description="You do not have permission to interact with this menu.",
-                    color=discord.Color.dark_embed(),
+                    color=disnake.Color.dark_theme(),
                 ),
                 ephemeral=True,
             )
@@ -100,22 +102,24 @@ class PaginatedView(discord.ui.View):
         self.index = index
 
 
-class PageModal(discord.ui.Modal, title="Skip to Page"):
-    page = discord.ui.TextInput(label="Page", required=True)
+class PageModal(disnake.ui.Modal):
+    page = disnake.ui.TextInput(label="Page", required=True, custom_id="page-1")
 
     def __init__(self, paginated_view: PaginatedView) -> None:
-        super().__init__()
+        super().__init__(title="Skip to Page", components=self.page)
         self.paginated_view = paginated_view
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
+    async def on_submit(self, interaction: disnake.Interaction) -> None:
+        assert self.page.value is not None
+
         if self.page.value.isdigit():
             self.paginated_view.set_index(int(self.page.value) - 1)
             await self.paginated_view.update(interaction)
         else:
             await interaction.response.send_message(
-                embed=discord.Embed(
+                embed=disnake.Embed(
                     description="That page number is invalid.",
-                    color=discord.Color.dark_embed(),
+                    color=disnake.Color.dark_theme(),
                 ),
                 ephemeral=True,
             )
