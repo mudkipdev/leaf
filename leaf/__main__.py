@@ -1,5 +1,5 @@
-from bot import LeafBot
 import tomllib
+from bot import LeafBot
 
 
 def main() -> None:

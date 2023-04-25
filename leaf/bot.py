@@ -1,15 +1,14 @@
 __all__ = ("LeafBot",)
 
 import os
+import logging
 from logging.handlers import RotatingFileHandler
-from typing import Optional, cast
 
 import discord_logging.handler
-from disnake.ext import tasks
-import disnake
 import asyncpg
-import logging
-from disnake.ext import commands
+import disnake
+
+from disnake.ext import commands, tasks
 from discord_logging.handler import DiscordHandler
 
 intents = disnake.Intents.default()
@@ -30,9 +29,10 @@ class InvalidWebhookError(Exception):
 
 
 class LeafBot(commands.Bot):
+    database: asyncpg.Connection
+
     def __init__(self, config: dict) -> None:
         self.config = config
-        self.database: Optional[asyncpg.Connection] = None
         self.webhook_url = config["logging"]["webhook_url"]
         self.logger = logging.getLogger()
 
@@ -160,7 +160,7 @@ class LeafBot(commands.Bot):
 
         except InvalidWebhookError:
             return None
-    
+
     async def start(self, token: str, **kwargs) -> None:
         await self.setup_hook()
         await super().start(token, **kwargs)

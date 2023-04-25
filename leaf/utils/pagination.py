@@ -1,10 +1,8 @@
 from __future__ import annotations
-
-from disnake.ext import commands
-import disnake
-import asyncio
-
 from typing import Optional, List
+
+import disnake
+
 
 __all__ = ("Paginator",)
 
@@ -15,7 +13,7 @@ class Paginator:
         embeds: List[disnake.Embed],
         *,
         index: int = 0,
-        author: Optional[disnake.Member] = None
+        author: Optional[disnake.Member] = None,
     ) -> None:
         self.embeds = embeds
         self.index = index
@@ -26,7 +24,7 @@ class Paginator:
         self,
         messageable: disnake.abc.Messageable | disnake.Interaction,
         *args,
-        **kwargs
+        **kwargs,
     ) -> None:
         kwargs["embed"] = self.embeds[self.index]
         kwargs["view"] = self.paginated_view
@@ -50,14 +48,18 @@ class PaginatedView(disnake.ui.View):
 
     @disnake.ui.button(custom_id="previous", emoji="◀")
     async def previous(
-        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
+        self,
+        _: disnake.ui.Button[PaginatedView],
+        interaction: disnake.MessageInteraction,
     ) -> None:
         self.set_index(self.index - 1)
         await self.update(interaction)
 
     @disnake.ui.button(custom_id="page", emoji="🔢")
     async def page(
-        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
+        self,
+        _: disnake.ui.Button[PaginatedView],
+        interaction: disnake.MessageInteraction,
     ) -> None:
         if self.author and interaction.user != self.author:
             await interaction.response.send_message(
@@ -73,7 +75,9 @@ class PaginatedView(disnake.ui.View):
 
     @disnake.ui.button(custom_id="next", emoji="▶")
     async def next(
-        self, _: disnake.ui.Button[PaginatedView], interaction: disnake.MessageInteraction
+        self,
+        _: disnake.ui.Button[PaginatedView],
+        interaction: disnake.MessageInteraction,
     ) -> None:
         self.set_index(self.index + 1)
         await self.update(interaction)

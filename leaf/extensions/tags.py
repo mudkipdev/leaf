@@ -1,14 +1,15 @@
+import asyncio
 import logging
+from typing import Optional, List
+
+import disnake
+import pytz
+from disnake.ext import commands
+from fuzzywuzzy import process
+from cachetools import LRUCache
 
 from bot import LeafBot
 from utils import Paginator
-from disnake.ext import commands
-import disnake
-import asyncio
-import pytz
-from fuzzywuzzy import process
-from cachetools import LRUCache
-from typing import Optional, List
 
 
 # noinspection PyUnresolvedReferences,PyTypeChecker
@@ -48,7 +49,7 @@ class TagsCog(commands.Cog):
     def remove_in_progress_tag(self, guild_id, name):
         try:
             being_made = self._reserved_tags_being_made[guild_id]
-        except KeyError:
+        except KeyError as e:
             self.logger.critical("An error occurred in tag removal.", exc_info=e)
             return
 
@@ -95,7 +96,7 @@ class TagsCog(commands.Cog):
                 )
             )
         else:
-            chunks = list(disnake.utils.as_chunks(tags, 15))
+            chunks = list(disnake.utils.as_chunks(iter(tags), 15))
             self.logger.info(f"Creating embed with {chunks} chunks.")
             for index, chunk in enumerate(chunks):
                 embed = disnake.Embed(
@@ -150,7 +151,7 @@ class TagsCog(commands.Cog):
 
         if tag_records:
             tag_names = [tag_record["name"] for tag_record in tag_records]
-            matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)
+            matches: List[tuple[str, int]] = process.extract(tag, tag_names, limit=15)  # type: ignore
 
             self.logger.debug(
                 f"Discovered tag names: {tag_names}\n Possible matches: {matches}"
@@ -170,16 +171,12 @@ class TagsCog(commands.Cog):
                 )
                 self.logger.debug(tag_records)
 
-                for tag_record in tag_records:
-                    embed = disnake.Embed(
-                        description="\n".join(
-                            [
-                                f"• **{tag_record['name']}**"
-                                for tag_record in tag_records
-                            ]
-                        ),
-                        color=disnake.Color.dark_theme(),
-                    )
+                embed = disnake.Embed(
+                    description="\n".join(
+                        [f"• **{tag_record['name']}**" for tag_record in tag_records]
+                    ),
+                    color=disnake.Color.dark_theme(),
+                )
                 await interaction.response.send_message(embed=embed, ephemeral=silent)
             else:
                 await interaction.response.send_message(
@@ -243,7 +240,9 @@ class TagsCog(commands.Cog):
                 )
 
     @commands.slash_command(name="create")
-    async def create_tag(self, interaction: disnake.GuildCommandInteraction, name: str) -> None:
+    async def create_tag(
+        self, interaction: disnake.GuildCommandInteraction, name: str
+    ) -> None:
         """
         Creates a new tag.
 
@@ -324,7 +323,7 @@ class TagsCog(commands.Cog):
     ) -> None:
         """
         Changes the name of a tag.
-        
+
         Parameters
         ----------
         tag: The name of the tag to rename.
@@ -393,7 +392,9 @@ class TagsCog(commands.Cog):
                 )
 
     @commands.slash_command(name="edit")
-    async def edit_tag(self, interaction: disnake.GuildCommandInteraction, tag: str) -> None:
+    async def edit_tag(
+        self, interaction: disnake.GuildCommandInteraction, tag: str
+    ) -> None:
         """
         Edits the content of a tag.
 
@@ -419,7 +420,7 @@ class TagsCog(commands.Cog):
                 )
                 return
 
-            if await self.check_permissions(tag_record["owner_id"], interaction):
+            if await self.check_permissions(tag_record["owner_id"], interaction):  # type: ignore
                 await interaction.response.send_message(
                     embed=disnake.Embed(
                         description="Please reply to this message with your new tag content within 5 minutes.",
@@ -474,17 +475,20 @@ class TagsCog(commands.Cog):
 
     @commands.slash_command(name="delete")
     async def delete_tag(
-        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        silent: bool = False,
     ) -> None:
         """
         Deletes a tag from the server.
-        
+
         Parameters
         ----------
         tag: The name of the tag to delete.
         silent: Whether the response should only be visible to you.
         """
-        
+
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
                 "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
@@ -520,7 +524,7 @@ class TagsCog(commands.Cog):
                     interaction.guild.id,
                 )
 
-            if await self.check_permissions(tag_record["owner_id"], interaction):
+            if await self.check_permissions(tag_record["owner_id"], interaction):  # type: ignore
                 await self.bot.database.execute(
                     "UPDATE Tags SET deleted = true WHERE name = $1;", tag
                 )
@@ -543,7 +547,10 @@ class TagsCog(commands.Cog):
     @commands.slash_command(name="restore")
     @commands.has_permissions(manage_guild=True)
     async def restore_tag(
-        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        silent: bool = False,
     ) -> None:
         """
         Recovers a previously deleted tag.
@@ -663,7 +670,10 @@ class TagsCog(commands.Cog):
 
     @commands.slash_command(name="info")
     async def tag_info(
-        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        silent: bool = False,
     ) -> None:
         """
         Sends the info and stats of a tag.
@@ -673,7 +683,7 @@ class TagsCog(commands.Cog):
         tag: The tag to view info for.
         silent: Whether the response should only be visible to you.
         """
-        
+
         tag_record = await self.bot.database.fetchrow(
             "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
             tag,
@@ -682,29 +692,30 @@ class TagsCog(commands.Cog):
         self.logger.debug(tag_record)
 
         if tag_record:
-            owner = await self.bot.try_user(tag_record["owner_id"])
+            owner = await self.bot.try_user(tag_record["owner_id"])  # type: ignore
             embed = disnake.Embed(
-                title=f"Info for tag \"{tag_record['name']}\"",
+                title=f"Info for tag \"{tag_record['name']}\"",  # type: ignore
                 color=disnake.Color.dark_theme(),
             )
             embed.add_field(name="Owner", value=owner.mention)
             embed.add_field(
                 name="Created At",
                 value=disnake.utils.format_dt(
-                    pytz.UTC.localize(tag_record["created_at"], "D")
+                    pytz.UTC.localize(tag_record["created_at"], True)  # type: ignore
                 ),
                 inline=False,
             )
-            if tag_record["last_edited_at"] != tag_record["created_at"]:
+            if tag_record["last_edited_at"] != tag_record["created_at"]:  # type: ignore
                 embed.add_field(
                     name="Updated At",
                     value=disnake.utils.format_dt(
-                        pytz.UTC.localize(tag_record["last_edited_at"], "D")
+                        pytz.UTC.localize(tag_record["last_edited_at"], True)  # type: ignore
                     ),
                     inline=False,
                 )
-            embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
-            embed.set_thumbnail(url=owner.avatar.url)
+            embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)  # type: ignore
+            owner_av = owner.avatar.url if owner.avatar else owner.display_avatar.url
+            embed.set_thumbnail(url=owner_av)
 
             await interaction.response.send_message(embed=embed, ephemeral=silent)
         else:
@@ -718,7 +729,10 @@ class TagsCog(commands.Cog):
 
     @commands.slash_command(name="transfer")
     async def transfer_tag(
-        self, interaction: disnake.GuildCommandInteraction, tag: str, user: disnake.Member
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        user: disnake.Member,
     ) -> None:
         """
         Transfers a tag to a different owner.
@@ -739,7 +753,7 @@ class TagsCog(commands.Cog):
             self.logger.debug(tag_record)
 
             if tag_record:
-                if await self.check_permissions(tag_record["owner_id"], interaction):
+                if await self.check_permissions(tag_record["owner_id"], interaction):  # type: ignore
                     if user.bot:
                         await interaction.response.send_message(
                             embed=disnake.Embed(
@@ -779,7 +793,10 @@ class TagsCog(commands.Cog):
 
     @commands.slash_command(name="claim")
     async def claim_tag(
-        self, interaction: disnake.GuildCommandInteraction, tag: str, silent: bool = False
+        self,
+        interaction: disnake.GuildCommandInteraction,
+        tag: str,
+        silent: bool = False,
     ) -> None:
         """
         Claims an unclaimed tag. An unclaimed tag is a tag with no owner because they have left the server.
@@ -800,7 +817,7 @@ class TagsCog(commands.Cog):
             if tag_record:
                 try:
                     member = await self.bot.try_member(
-                        tag_record["owner_id"], guild=interaction.guild
+                        tag_record["owner_id"], guild=interaction.guild  # type: ignore
                     )
                     if member is not None:
                         await interaction.response.send_message(
@@ -835,8 +852,9 @@ class TagsCog(commands.Cog):
                     ),
                     ephemeral=silent,
                 )
-    
+
         # Possible additional performance optimizations:
+
     # 1) Paginate records into batches and fetch them in chunks of 50.
     # 2) Timeout for database queries.
     @view_tag.autocomplete("tag")
@@ -883,10 +901,7 @@ class TagsCog(commands.Cog):
 
             self.logger.debug(self.autocomplete_cache)
 
-        return [
-            tag["name"]
-            for tag in tag_records
-        ] # type: ignore
+        return [tag["name"] for tag in tag_records]  # type: ignore
 
 
 def setup(bot: LeafBot) -> None:
