@@ -56,8 +56,8 @@ class TagsCog(commands.Cog):
         being_made.discard(name.lower())
         if not being_made:
             del self._reserved_tags_being_made[guild_id]
-    
-    @commands.slash_command(name="tag")
+
+    @commands.slash_command(name="tags")
     async def tags(self, inter: disnake.GuildCommandInteraction) -> None:
         ...
 
