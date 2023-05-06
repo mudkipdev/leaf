@@ -1,6 +1,5 @@
-from bot import LeafBot
-import discord
 import tomllib
+from bot import LeafBot
 
 
 def main() -> None:

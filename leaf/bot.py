@@ -1,17 +1,17 @@
 __all__ = ("LeafBot",)
 
 import os
+import logging
 from logging.handlers import RotatingFileHandler
 
 import discord_logging.handler
-from discord.ext import tasks
-import discord
 import asyncpg
-import logging
-from discord.ext import commands
+import disnake
+
+from disnake.ext import commands, tasks
 from discord_logging.handler import DiscordHandler
 
-intents = discord.Intents.default()
+intents = disnake.Intents.default()
 intents.message_content = True
 
 
@@ -29,9 +29,10 @@ class InvalidWebhookError(Exception):
 
 
 class LeafBot(commands.Bot):
+    database: asyncpg.Connection
+
     def __init__(self, config: dict) -> None:
         self.config = config
-        self.database = None
         self.webhook_url = config["logging"]["webhook_url"]
         self.logger = logging.getLogger()
 
@@ -39,7 +40,7 @@ class LeafBot(commands.Bot):
             intents=intents,
             command_prefix=commands.when_mentioned,
             case_insensitive=True,
-            allowed_mentions=discord.AllowedMentions(everyone=False),
+            allowed_mentions=disnake.AllowedMentions(everyone=False),
         )
         self.setup_logging()
 
@@ -53,7 +54,7 @@ class LeafBot(commands.Bot):
 
         bots = sum(m.bot for m in guild.members)
         total = guild.member_count
-        online = sum(m.status is discord.Status.online for m in guild.members)
+        online = sum(m.status is disnake.Status.online for m in guild.members)
         e.add_field(name="Members", value=str(total))
         e.add_field(name="Bots", value=f"{bots} ({bots/total:.2%})")
         e.add_field(name="Online", value=f"{online} ({online/total:.2%})")
@@ -64,13 +65,13 @@ class LeafBot(commands.Bot):
         if guild.me:
             e.timestamp = guild.me.joined_at
 
-        hook = discord.Webhook.from_url(self.webhook_url, client=self)
+        hook = disnake.Webhook.from_url(self.webhook_url, session=self.http.__session)
 
         await hook.send(embed=e)
 
     async def setup_hook(self) -> None:
         for extension in self.config["extensions"]:
-            await self.load_extension(extension)
+            self.load_extension(extension)
 
         self.database = await asyncpg.connect(self.config["database"]["connection_uri"])
 
@@ -104,15 +105,15 @@ class LeafBot(commands.Bot):
     @tasks.loop(minutes=1.0)
     async def update_activity(self) -> None:
         await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.watching,
+            activity=disnake.Activity(
+                type=disnake.ActivityType.watching,
                 name=f"{len(self.guilds)} server"
                 + ("s" if len(self.guilds) != 1 else ""),
             )
         )
 
     async def on_guild_join(self, guild):
-        e = discord.Embed(colour=0x53DDA4, title="New Guild")
+        e = disnake.Embed(colour=0x53DDA4, title="New Guild")
         await self.send_guild_stats(e, guild)
 
     async def on_ready(self) -> None:
@@ -124,10 +125,10 @@ class LeafBot(commands.Bot):
 
         await super().close()
 
-    async def try_user(self, id: int, /) -> discord.User:
+    async def try_user(self, id: int, /) -> disnake.User:
         return self.get_user(id) or await self.fetch_user(id)
 
-    async def try_member(self, id: int, /, *, guild: discord.Guild) -> discord.Member:
+    async def try_member(self, id: int, /, *, guild: disnake.Guild) -> disnake.Member:
         return guild.get_member(id) or await guild.fetch_member(id)
 
     def setup_discord_handler(self):
@@ -159,3 +160,7 @@ class LeafBot(commands.Bot):
 
         except InvalidWebhookError:
             return None
+
+    async def start(self, token: str, **kwargs) -> None:
+        await self.setup_hook()
+        await super().start(token, **kwargs)
