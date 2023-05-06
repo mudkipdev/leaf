@@ -56,8 +56,12 @@ class TagsCog(commands.Cog):
         being_made.discard(name.lower())
         if not being_made:
             del self._reserved_tags_being_made[guild_id]
+    
+    @commands.slash_command(name="tag")
+    async def tags(self, inter: disnake.GuildCommandInteraction) -> None:
+        ...
 
-    @commands.slash_command(name="list")
+    @tags.sub_command(name="list")
     async def list_tags(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -126,7 +130,7 @@ class TagsCog(commands.Cog):
         else:
             await interaction.response.send_message(embed=embeds[0])
 
-    @commands.slash_command(name="search")
+    @tags.sub_command(name="search")
     async def search_tag(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -187,7 +191,7 @@ class TagsCog(commands.Cog):
                 f"No tags found for '{tag}'.", ephemeral=silent
             )
 
-    @commands.slash_command(name="view")
+    @tags.sub_command(name="view")
     async def view_tag(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -239,7 +243,7 @@ class TagsCog(commands.Cog):
                     ephemeral=silent,
                 )
 
-    @commands.slash_command(name="create")
+    @tags.sub_command(name="create")
     async def create_tag(
         self, interaction: disnake.GuildCommandInteraction, name: str
     ) -> None:
@@ -317,7 +321,7 @@ class TagsCog(commands.Cog):
                     )
                 )
 
-    @commands.slash_command(name="rename")
+    @tags.sub_command(name="rename")
     async def rename_tag(
         self, interaction: disnake.GuildCommandInteraction, tag: str, new_name: str
     ) -> None:
@@ -391,7 +395,7 @@ class TagsCog(commands.Cog):
                     )
                 )
 
-    @commands.slash_command(name="edit")
+    @tags.sub_command(name="edit")
     async def edit_tag(
         self, interaction: disnake.GuildCommandInteraction, tag: str
     ) -> None:
@@ -473,7 +477,7 @@ class TagsCog(commands.Cog):
                     )
                 )
 
-    @commands.slash_command(name="delete")
+    @tags.sub_command(name="delete")
     async def delete_tag(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -544,7 +548,7 @@ class TagsCog(commands.Cog):
                     ephemeral=silent,
                 )
 
-    @commands.slash_command(name="restore")
+    @tags.sub_command(name="restore")
     @commands.has_permissions(manage_guild=True)
     async def restore_tag(
         self,
@@ -668,7 +672,7 @@ class TagsCog(commands.Cog):
                 ephemeral=silent,
             )
 
-    @commands.slash_command(name="info")
+    @tags.sub_command(name="info")
     async def tag_info(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -727,7 +731,7 @@ class TagsCog(commands.Cog):
                 ephemeral=silent,
             )
 
-    @commands.slash_command(name="transfer")
+    @tags.sub_command(name="transfer")
     async def transfer_tag(
         self,
         interaction: disnake.GuildCommandInteraction,
@@ -791,7 +795,7 @@ class TagsCog(commands.Cog):
                     )
                 )
 
-    @commands.slash_command(name="claim")
+    @tags.sub_command(name="claim")
     async def claim_tag(
         self,
         interaction: disnake.GuildCommandInteraction,
