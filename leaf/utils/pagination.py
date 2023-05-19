@@ -58,13 +58,7 @@ class PaginatedView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         if self.author and interaction.user != self.author:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="You do not have permission to interact with this menu.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=True,
-            )
+            await interaction.response.defer()
             return
 
         await interaction.response.send_modal(PageModal(self))
@@ -78,13 +72,7 @@ class PaginatedView(discord.ui.View):
 
     async def update(self, interaction: discord.Interaction) -> None:
         if self.author and interaction.user != self.author:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="You do not have permission to interact with this menu.",
-                    color=discord.Color.dark_embed(),
-                ),
-                ephemeral=True,
-            )
+            await interaction.response.defer()
             return
 
         await interaction.response.edit_message(
