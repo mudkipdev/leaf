@@ -9,7 +9,7 @@ import asyncio
 import pytz
 from fuzzywuzzy import process
 from cachetools import LRUCache
-from typing import Optional, List
+from typing import List
 
 
 # noinspection PyUnresolvedReferences,PyTypeChecker
@@ -112,9 +112,9 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     async def list_tags(
         self,
         interaction: discord.Interaction,
-        user: Optional[discord.Member] = None,
-        starting_page: Optional[int] = 1,
-        silent: Optional[bool] = False,
+        user: discord.Member | None = None,
+        starting_page: int = 1,
+        silent: bool | None = False,
     ) -> None:
         if user is not None:
             query = "SELECT * FROM tags WHERE guild_id = $1 AND owner_id = $2 AND deleted = FALSE ORDER BY name ASC"
@@ -176,7 +176,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self,
         interaction: discord.Interaction,
         tag: str,
-        silent: Optional[bool] = False,
+        silent: bool | None = False,
     ) -> None:
         tag_records = await self.bot.database.fetch(
             "SELECT * FROM tags WHERE guild_id = $1 AND deleted = FALSE",
@@ -238,8 +238,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         self,
         interaction: discord.Interaction,
         tag: str,
-        raw: Optional[bool] = False,
-        silent: Optional[bool] = False,
+        raw: bool | None = False,
+        silent: bool | None = False,
     ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
@@ -494,7 +494,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(name="delete", description="Deletes a tag from the server.")
     @app_commands.autocomplete(tag=tag_autocomplete)
     async def delete_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self, interaction: discord.Interaction, tag: str, silent: bool | None = False
     ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
@@ -560,7 +560,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     )
     @app_commands.checks.has_permissions(manage_guild=True)
     async def restore_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self, interaction: discord.Interaction, tag: str, silent: bool | None = False
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
             "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = TRUE;",
@@ -676,7 +676,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.command(name="info", description="Sends the info and stats of a tag.")
     @app_commands.autocomplete(tag=tag_autocomplete)
     async def tag_info(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self, interaction: discord.Interaction, tag: str, silent: bool | None = False
     ) -> None:
         tag_record = await self.bot.database.fetchrow(
             "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
@@ -787,7 +787,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     )
     @app_commands.autocomplete(tag=tag_autocomplete)
     async def claim_tag(
-        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+        self, interaction: discord.Interaction, tag: str, silent: bool | None = False
     ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(

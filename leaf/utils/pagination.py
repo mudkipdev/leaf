@@ -2,7 +2,7 @@ from discord.ext import commands
 import discord
 import asyncio
 
-from typing import Optional, List
+from typing import List
 
 __all__ = ("Paginator",)
 
@@ -13,7 +13,7 @@ class Paginator:
         embeds: List[discord.Embed],
         *,
         index: int = 0,
-        author: Optional[discord.User] = None
+        author: discord.User | None = None
     ) -> None:
         self.embeds = embeds
         self.index = index
@@ -39,7 +39,7 @@ class Paginator:
 
 class PaginatedView(discord.ui.View):
     def __init__(
-        self, embeds: List[discord.Embed], *, author: Optional[discord.User] = None
+        self, embeds: List[discord.Embed], *, author: discord.User | None = None
     ) -> None:
         super().__init__(timeout=None)
         self.embeds = embeds
