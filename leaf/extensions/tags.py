@@ -277,7 +277,12 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
 
     @app_commands.describe(name="The tag of the newly created tag.")
     @app_commands.command(name="create", description="Creates a new tag.")
-    async def create_tag(self, interaction: discord.Interaction, name: str) -> None:
+    async def create_tag(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        silent: Optional[bool] = False,
+    ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
                 "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
@@ -294,7 +299,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="Please reply to this message with your tag content within 5 minutes.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
                 message = await interaction.original_response()
 
@@ -316,6 +322,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                             description="You took too long to provide the tag content.",
                             color=discord.Color.dark_embed(),
                         ),
+                        ephemeral=silent,
                     )
                     return
 
@@ -341,8 +348,139 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="That tag already exists.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
+
+    @app_commands.describe(
+        tag_alias="The alias name that you would like to create.",
+        existing_tag="The existing tag you would like to link to.",
+    )
+    @app_commands.command(
+        name="alias",
+        description="Create an alias for a pre-existing tag.",
+    )
+    @app_commands.autocomplete(existing_tag=tag_autocomplete)
+    async def create_alias(
+        self,
+        interaction: discord.Interaction,
+        tag_alias: str,
+        existing_tag: str,
+        silent: Optional[bool] = False,
+    ) -> None:
+        # Check if the tag exists and is owned by the user
+        tag_record = await self.bot.database.fetchrow(
+            "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND owner_id = $3 AND deleted = FALSE;",
+            existing_tag,
+            interaction.guild.id,
+            interaction.user.id,
+        )
+        if not tag_record:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f'You do not own the tag "{existing_tag}" or it does not exist.',
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=silent,
+            )
+            return
+
+        alias_record = await self.bot.database.fetchrow(
+            "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
+            tag_alias,
+            interaction.guild.id,
+        )
+        if alias_record:
+            # Update the existing tag_alias with the content of the existing tag
+            await self.bot.database.execute(
+                """
+                UPDATE tags
+                SET content = $1, original_tag_id = $2
+                WHERE id = $3;
+                """,
+                tag_record["content"],
+                tag_record["id"],
+                alias_record["id"],
+            )
+
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f'The tag alias "{tag_alias}" has been updated to "{existing_tag}".',
+                    color=discord.Color.dark_embed(),
+                ),
+                ephemeral=silent,
+            )
+            return
+
+            # Create the new alias with the existing tag's content
+        await self.bot.database.execute(
+            """
+            INSERT INTO tags(name, guild_id, owner_id, content, created_at, last_edited_at, uses, original_tag_id)
+            VALUES ($1, $2, $3, $4, DEFAULT, DEFAULT, DEFAULT, $5);
+            """,
+            tag_alias,
+            interaction.guild.id,
+            interaction.user.id,
+            tag_record["content"],
+            tag_record["original_tag_id"] or tag_record["id"],
+        )
+
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                description=f'The tag alias "{tag_alias}" has been created for "{existing_tag}"',
+                color=discord.Color.dark_embed(),
+            ),
+            ephemeral=silent,
+        )
+
+    @app_commands.describe(tag="The tag you wish to unlink from the parent tag.")
+    @app_commands.command(
+        name="unalias",
+        description="Unaliases a tag so it is no longer linked to the parent tag.",
+    )
+    @app_commands.autocomplete(tag=tag_autocomplete)
+    async def unalias_tag(
+        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+    ) -> None:
+        async with self.bot.database.transaction():
+            # Retrieve the existing tag from the database
+            tag_record = await self.bot.database.fetchrow(
+                "SELECT * FROM tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE AND original_tag_id IS NOT NULL;",
+                tag,
+                interaction.guild.id,
+            )
+            if not tag_record:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="That tag does not exist.",
+                        color=discord.Color.dark_embed(),
+                    ),
+                    ephemeral=silent,
+                )
+                return
+
+            else:
+                if await self.check_permissions(tag_record["owner_id"], interaction):
+                    await self.bot.database.execute(
+                        "UPDATE tags SET last_edited_at = NOW() AT TIME ZONE 'utc', original_tag_id = null WHERE name = $1 and guild_id = $2;",
+                        tag,
+                        interaction.guild.id,
+                    )
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            description="The tag has successfully been unaliased.",
+                            color=discord.Color.dark_embed(),
+                        ),
+                        ephemeral=silent,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            description="You do not have permission to rename that tag.",
+                            color=discord.Color.dark_embed(),
+                        ),
+                        ephemeral=silent,
+                    )
 
     @app_commands.describe(
         tag="The name of the tag to rename.", new_name="The new name of the tag."
@@ -350,7 +488,11 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
     @app_commands.autocomplete(tag=tag_autocomplete)
     @app_commands.command(name="rename", description="Changes the name of a tag.")
     async def rename_tag(
-        self, interaction: discord.Interaction, tag: str, new_name: str
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        new_name: str,
+        silent: Optional[bool] = False,
     ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
@@ -366,7 +508,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="That tag does not exist.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
                 return
 
@@ -385,7 +528,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                         embed=discord.Embed(
                             description=f"A tag named {new_name} already exists.",
                             color=discord.Color.dark_embed(),
-                        )
+                        ),
+                        ephemeral=silent,
                     )
                     return
 
@@ -403,26 +547,39 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="The tag has successfully been renamed.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
             else:
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         description="You do not have permission to rename that tag.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
 
     @app_commands.describe(tag="The name of the tag to edit.")
     @app_commands.command(name="edit", description="Edits the content of a tag.")
     @app_commands.autocomplete(tag=tag_autocomplete)
-    async def edit_tag(self, interaction: discord.Interaction, tag: str) -> None:
+    async def edit_tag(
+        self, interaction: discord.Interaction, tag: str, silent: Optional[bool] = False
+    ) -> None:
         async with self.bot.database.transaction():
             tag_record = await self.bot.database.fetchrow(
                 "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
                 tag,
                 interaction.guild.id,
             )
+            if tag_record["original_tag_id"]:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You can not edit the content of an alias.",
+                        color=discord.Color.dark_embed(),
+                    ),
+                    ephemeral=silent,
+                )
+                return
             self.logger.debug(tag_record)
 
             if not tag_record:
@@ -430,7 +587,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="That tag does not exist.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
                 return
 
@@ -439,7 +597,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="Please reply to this message with your new tag content within 5 minutes.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
                 message = await interaction.original_response()
 
@@ -463,6 +622,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                             description="You took too long to provide the new tag content.",
                             color=discord.Color.dark_embed(),
                         ),
+                        ephemeral=silent,
                     )
                     return
 
@@ -484,7 +644,8 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     embed=discord.Embed(
                         description="You do not have permission to edit that tag.",
                         color=discord.Color.dark_embed(),
-                    )
+                    ),
+                    ephemeral=silent,
                 )
 
     @app_commands.describe(
@@ -530,26 +691,53 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     tag,
                     interaction.guild.id,
                 )
-
-            if await self.check_permissions(tag_record["owner_id"], interaction):
-                await self.bot.database.execute(
-                    "UPDATE Tags SET deleted = true WHERE name = $1;", tag
-                )
                 await interaction.response.send_message(
                     embed=discord.Embed(
-                        description="The tag has successfully been deleted.",
+                        description="The tag and its aliases have successfully been deleted.",
                         color=discord.Color.dark_embed(),
                     ),
                     ephemeral=silent,
                 )
             else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="You do not have permission to delete that tag.",
-                        color=discord.Color.dark_embed(),
-                    ),
-                    ephemeral=silent,
-                )
+                if await self.check_permissions(tag_record["owner_id"], interaction):
+                    if tag_record["original_tag_id"] is None:
+                        # Get all alias tags and update them to be their own tag
+                        alias_tags = await self.bot.database.fetch(
+                            "SELECT * FROM Tags WHERE original_tag_id = $1 AND deleted = FALSE AND id != $2;",
+                            tag_record["id"],
+                            tag_record["id"],
+                        )
+
+                        for alias_tag in alias_tags:
+                            await self.bot.database.execute(
+                                """
+                                UPDATE Tags
+                                SET original_tag_id = NULL,
+                                    content = $1
+                                WHERE id = $2
+                                """,
+                                "This tag has no content.",
+                                alias_tag["id"],
+                            )
+                    await self.bot.database.execute(
+                        "UPDATE Tags SET deleted = true WHERE id = $1;",
+                        tag_record["id"],
+                    )
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            description="The tag has successfully been deleted.",
+                            color=discord.Color.dark_embed(),
+                        ),
+                        ephemeral=silent,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            description="You do not have permission to delete that tag.",
+                            color=discord.Color.dark_embed(),
+                        ),
+                        ephemeral=silent,
+                    )
 
     @app_commands.describe(
         tag="The deleted tag that you wish to restore.",
@@ -619,14 +807,6 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     )
                 )
                 return
-            elif self.is_tag_being_made(interaction.guild_id, new_tag_name):
-                await message.reply(
-                    embed=discord.Embed(
-                        description="That tag name is already taken. Please try again.",
-                        color=discord.Color.dark_embed(),
-                    )
-                )
-                return
             elif await self.bot.database.fetchrow(
                 "SELECT * FROM Tags WHERE name = $1 AND guild_id = $2 AND deleted = FALSE;",
                 new_tag_name,
@@ -688,7 +868,7 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
         if tag_record:
             owner = await self.bot.try_user(tag_record["owner_id"])
             embed = discord.Embed(
-                title=f"Info for tag \"{tag_record['name']}\"",
+                title=f'Info for tag "{tag_record["name"]}',
                 color=discord.Color.dark_embed(),
             )
             embed.add_field(name="Owner", value=owner.mention)
@@ -708,6 +888,15 @@ class TagsCog(commands.GroupCog, name="Tags", group_name="tags"):
                     inline=False,
                 )
             embed.add_field(name="Uses", value=str(tag_record["uses"]), inline=False)
+            if tag_record["original_tag_id"] is not None:
+                original_tag_record = await self.bot.database.fetchrow(
+                    "SELECT name FROM tags WHERE id = $1 AND guild_id = $2 AND deleted = FALSE;",
+                    tag_record["original_tag_id"],
+                    interaction.guild.id,
+                )
+                embed.add_field(
+                    name="Alias To", value=original_tag_record["name"], inline=False
+                )
             embed.set_thumbnail(url=owner.avatar.url)
 
             await interaction.response.send_message(embed=embed, ephemeral=silent)
